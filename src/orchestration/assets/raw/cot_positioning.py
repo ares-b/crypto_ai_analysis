@@ -8,7 +8,7 @@ from pipelines.raw.cot_positioning.config import COT_POSITIONING_SETTINGS
 from pipelines.raw.cot_positioning.run import run_cot_positioning
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cftc"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cftc"})
 def raw_cot_positioning(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

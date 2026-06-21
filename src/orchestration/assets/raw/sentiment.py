@@ -8,7 +8,7 @@ from pipelines.raw.sentiment_index.config import SENTIMENT_SETTINGS
 from pipelines.raw.sentiment_index.run import run_sentiment_index
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "alternative.me"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "alternative.me"})
 def raw_sentiment_index(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

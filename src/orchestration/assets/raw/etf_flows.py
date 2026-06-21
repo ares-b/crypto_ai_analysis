@@ -8,7 +8,7 @@ from pipelines.raw.etf_flows.config import ETF_FLOWS_SETTINGS
 from pipelines.raw.etf_flows.run import run_etf_flows
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "farside"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "farside"})
 def raw_etf_flows(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

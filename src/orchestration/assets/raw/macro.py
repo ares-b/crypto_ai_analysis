@@ -31,7 +31,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "fred"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "fred"})
 def raw_macro_calendar(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -40,7 +40,7 @@ def raw_macro_calendar(
     return _run(context, iceberg_store, fred_client, fn=run_macro_calendar, settings=MACRO_CALENDAR_SETTINGS)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "fred"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "fred"})
 def raw_macro_series(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

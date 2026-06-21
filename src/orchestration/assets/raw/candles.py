@@ -42,7 +42,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def binance_candles_daily(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -51,7 +51,7 @@ def binance_candles_daily(
     return _run(context, iceberg_store, binance_client, settings=DAILY_CANDLES, window_delta=timedelta(days=1))
 
 
-@asset(partitions_def=weekly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=weekly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def binance_candles_weekly(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

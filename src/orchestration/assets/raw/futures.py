@@ -34,7 +34,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=_binance_perp_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_binance_perp_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def raw_funding_rates(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -43,7 +43,7 @@ def raw_funding_rates(
     return _run(context, iceberg_store, binance_client, fn=run_funding_rates, settings=FUNDING_RATES)
 
 
-@asset(partitions_def=_binance_perp_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_binance_perp_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def raw_futures_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -52,7 +52,7 @@ def raw_futures_metrics(
     return _run(context, iceberg_store, binance_client, fn=run_futures_metrics, settings=DERIVATIVES_METRICS)
 
 
-@asset(partitions_def=_long_short_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_long_short_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def raw_long_short_ratio(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

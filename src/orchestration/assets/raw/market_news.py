@@ -8,7 +8,7 @@ from pipelines.raw.market_news.config import MARKET_NEWS_SETTINGS
 from pipelines.raw.market_news.run import run_market_news
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "rss"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "rss"})
 def raw_market_news(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

@@ -8,7 +8,7 @@ from pipelines.raw.exchange_flows.config import EXCHANGE_FLOW_SETTINGS
 from pipelines.raw.exchange_flows.run import run_exchange_flows
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cryptoquant"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cryptoquant"})
 def raw_exchange_flows(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

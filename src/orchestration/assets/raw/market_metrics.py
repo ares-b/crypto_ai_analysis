@@ -27,7 +27,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=_dominance_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_dominance_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
 def raw_market_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -36,7 +36,7 @@ def raw_market_metrics(
     return _run(context, iceberg_store, coingecko_client, fn=run_market_metrics)
 
 
-@asset(partitions_def=_stablecoin_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_stablecoin_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
 def raw_stablecoin_supply(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

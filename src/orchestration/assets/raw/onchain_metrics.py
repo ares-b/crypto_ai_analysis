@@ -8,7 +8,7 @@ from pipelines.raw.onchain_metrics.config import ONCHAIN_SETTINGS
 from pipelines.raw.onchain_metrics.run import run_onchain_metrics
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "coinmetrics"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "coinmetrics"})
 def raw_onchain_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
