@@ -1,7 +1,7 @@
 # crypto-ai-analysis
 
 [![Tests](https://github.com/ares-b/crypto_ai_analysis/actions/workflows/tests.yml/badge.svg)](https://github.com/ares-b/crypto_ai_analysis/actions/workflows/tests.yml)
-[![Release](https://github.com/ares-b/crypto_ai_analysis/actions/workflows/release.yml/badge.svg)](https://github.com/ares-b/crypto_ai_analysis/actions/workflows/release.yml)
+[![Release](https://github.com/ares-b/crypto_ai_analysis/actions/workflows/release.yml/badge.svg)](https://github.com/ares-b/crypto_ai_analysis/releases)
 [![Image](https://img.shields.io/badge/ghcr.io-crypto__ai__analysis-blue?logo=docker)](https://github.com/ares-b/crypto_ai_analysis/pkgs/container/crypto_ai_analysis)
 
 Daily BTC data pipeline. Ingests raw market, on-chain, macro, and sentiment signals into Apache Iceberg on S3. Runs as a Dagster user code deployment on k3s.
