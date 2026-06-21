@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.27",
     "python-binance>=1.0",
     "dagster>=1.9",
+    "dagster-postgres",
     "dagster-webserver>=1.9",
 ]
 
