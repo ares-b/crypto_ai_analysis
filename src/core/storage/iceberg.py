@@ -164,8 +164,6 @@ class IcebergStore(Store):
 
     @staticmethod
     def _set_s3_checksum_defaults() -> None:
-        # Garage returns checksum headers that fail botocore's flexible checksum
-        # validation on range reads. `when_required` keeps mandatory behavior
-        # without failing on optional response validation.
+        # Garage returns checksum headers that break botocore range-read validation
         os.environ.setdefault("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
         os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")

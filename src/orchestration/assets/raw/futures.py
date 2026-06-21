@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
-from dagster import AssetExecutionContext, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-from orchestration.assets.raw import daily_partitions
+_binance_perp_partitions = DailyPartitionsDefinition(start_date="2019-09-13", timezone="UTC")
+_long_short_partitions = DailyPartitionsDefinition(start_date="2026-05-22", timezone="UTC")
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 from pipelines.raw.futures.config import DERIVATIVES_METRICS, FUNDING_RATES, LONG_SHORT_RATIO
 from pipelines.raw.futures.run import run_funding_rates, run_futures_metrics, run_long_short_ratio
@@ -33,7 +34,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="binance")
+@asset(partitions_def=_binance_perp_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def raw_funding_rates(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -42,7 +43,7 @@ def raw_funding_rates(
     return _run(context, iceberg_store, binance_client, fn=run_funding_rates, settings=FUNDING_RATES)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="binance")
+@asset(partitions_def=_binance_perp_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def raw_futures_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -51,7 +52,7 @@ def raw_futures_metrics(
     return _run(context, iceberg_store, binance_client, fn=run_futures_metrics, settings=DERIVATIVES_METRICS)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="binance")
+@asset(partitions_def=_long_short_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def raw_long_short_ratio(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

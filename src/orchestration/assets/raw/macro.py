@@ -1,8 +1,8 @@
 from datetime import date, timedelta
 
-from dagster import AssetExecutionContext, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-from orchestration.assets.raw import daily_partitions
+daily_partitions = DailyPartitionsDefinition(start_date="2017-01-01", timezone="UTC")
 from orchestration.resources import HttpClientResource, IcebergStoreResource
 from pipelines.raw.macro_calendar.config import MACRO_CALENDAR_SETTINGS
 from pipelines.raw.macro_calendar.run import run_macro_calendar
@@ -31,7 +31,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="http")
+@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "fred"})
 def raw_macro_calendar(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -40,7 +40,7 @@ def raw_macro_calendar(
     return _run(context, iceberg_store, fred_client, fn=run_macro_calendar, settings=MACRO_CALENDAR_SETTINGS)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="http")
+@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "fred"})
 def raw_macro_series(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

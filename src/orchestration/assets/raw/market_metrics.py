@@ -1,8 +1,9 @@
 from datetime import date
 
-from dagster import AssetExecutionContext, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-from orchestration.assets.raw import daily_partitions
+_dominance_partitions = DailyPartitionsDefinition(start_date="2025-06-21", timezone="UTC")
+_stablecoin_partitions = DailyPartitionsDefinition(start_date="2026-06-20", timezone="UTC")
 from orchestration.resources import HttpClientResource, IcebergStoreResource
 from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
 from pipelines.raw.market_metrics.run import run_market_metrics, run_stablecoin_supply
@@ -26,7 +27,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="http")
+@asset(partitions_def=_dominance_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
 def raw_market_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -35,7 +36,7 @@ def raw_market_metrics(
     return _run(context, iceberg_store, coingecko_client, fn=run_market_metrics)
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="http")
+@asset(partitions_def=_stablecoin_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
 def raw_stablecoin_supply(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

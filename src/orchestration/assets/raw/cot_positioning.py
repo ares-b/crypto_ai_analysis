@@ -1,14 +1,14 @@
 from datetime import date
 
-from dagster import AssetExecutionContext, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-from orchestration.assets.raw import daily_partitions
+daily_partitions = DailyPartitionsDefinition(start_date="2018-01-02", timezone="UTC")
 from orchestration.resources import HttpClientResource, IcebergStoreResource
 from pipelines.raw.cot_positioning.config import COT_POSITIONING_SETTINGS
 from pipelines.raw.cot_positioning.run import run_cot_positioning
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="http")
+@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cftc"})
 def raw_cot_positioning(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,

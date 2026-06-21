@@ -1,14 +1,14 @@
 from datetime import date
 
-from dagster import AssetExecutionContext, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-from orchestration.assets.raw import daily_partitions
+daily_partitions = DailyPartitionsDefinition(start_date="2019-01-01", timezone="UTC")
 from orchestration.resources import CryptoQuantClientResource, IcebergStoreResource
 from pipelines.raw.exchange_flows.config import EXCHANGE_FLOW_SETTINGS
 from pipelines.raw.exchange_flows.run import run_exchange_flows
 
 
-@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="http")
+@asset(partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cryptoquant"})
 def raw_exchange_flows(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
