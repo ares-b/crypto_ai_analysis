@@ -113,3 +113,21 @@ class TestRunSentimentIndex:
         assert "dvol_rows_affected" in metrics
         assert "put_call_rows_affected" in metrics
         assert "available_days" in metrics
+
+    def test_put_call_http_error_graceful(self, logger):
+        fear_greed_client = MagicMock()
+        fear_greed_client.get_json.return_value = _make_fear_greed_response()
+        deribit_client = MagicMock()
+        deribit_client.get_json.side_effect = [
+            _make_dvol_response(),
+            HttpError(503, "test"),
+        ]
+        store = MemoryStore()
+
+        metrics = run_sentiment_index(
+            store=store, logger=logger, run_date=RUN_DATE, settings=SETTINGS,
+            fear_greed_client=fear_greed_client, deribit_client=deribit_client,
+        )
+
+        assert metrics["rows_affected"] == 1
+        assert metrics["put_call_rows_affected"] == 0

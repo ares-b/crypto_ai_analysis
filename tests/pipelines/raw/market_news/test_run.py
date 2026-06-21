@@ -169,3 +169,57 @@ class TestRunMarketNews:
         assert "rows_affected" in metrics
         assert "items_seen" in metrics
         assert "items_written" in metrics
+
+
+class TestParseRssDate:
+    def test_iso_date_fallback(self):
+        from pipelines.raw.market_news.run import _parse_rss_date
+        result = _parse_rss_date("2024-06-01T12:00:00Z")
+        assert result is not None
+        assert result.year == 2024
+
+    def test_invalid_returns_none(self):
+        from pipelines.raw.market_news.run import _parse_rss_date
+        assert _parse_rss_date("not-a-date") is None
+
+    def test_empty_returns_none(self):
+        from pipelines.raw.market_news.run import _parse_rss_date
+        assert _parse_rss_date("") is None
+
+
+class TestParseAtomEdgeCases:
+    def test_atom_entry_without_link_skipped(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom">
+          <entry><title>No link</title></entry>
+          <entry><title>Has link</title><link href="https://x.com/a"/></entry>
+        </feed>"""
+        items = _parse_feed(xml)
+        assert len(items) == 1
+        assert items[0].url == "https://x.com/a"
+
+    def test_atom_updated_fallback_for_published(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <title>Updated only</title>
+            <link href="https://x.com/b"/>
+            <updated>2024-06-01T12:00:00Z</updated>
+          </entry>
+        </feed>"""
+        items = _parse_feed(xml)
+        assert len(items) == 1
+        assert items[0].published_at is not None
+
+
+class TestStoredSourceUrls:
+    def test_deduplicates_known_urls_across_runs(self, logger):
+        client = MagicMock()
+        client.get_text.side_effect = [_RSS_XML, "c1", "c2"]
+        store = MemoryStore()
+
+        run_market_news(store=store, logger=logger, run_date=RUN_DATE, settings=SETTINGS, client=client)
+
+        client.get_text.side_effect = [_RSS_XML]
+        metrics = run_market_news(store=store, logger=logger, run_date=RUN_DATE, settings=SETTINGS, client=client)
+
+        assert metrics["items_written"] == 0
+        assert metrics["items_seen"] == 2
