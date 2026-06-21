@@ -3,7 +3,6 @@ from datetime import date
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
 daily_partitions = DailyPartitionsDefinition(start_date="2019-01-01", timezone="UTC")
-from orchestration.resources import CryptoQuantClientResource, IcebergStoreResource
 from pipelines.raw.exchange_flows.config import EXCHANGE_FLOW_SETTINGS
 from pipelines.raw.exchange_flows.run import run_exchange_flows
 
@@ -24,7 +23,11 @@ def raw_exchange_flows(
         until=run_date,
     )
     return MaterializeResult(metadata=metrics)
-
-
+# 08:00 UTC - CryptoQuant on-chain settled ~06:00 UTC
 raw_exchange_flows_job = define_asset_job("raw_exchange_flows_job", selection=[raw_exchange_flows])
-raw_exchange_flows_schedule = build_schedule_from_partitioned_job(raw_exchange_flows_job, hour_of_day=14)
+raw_exchange_flows_schedule = build_schedule_from_partitioned_job(raw_exchange_flows_job, hour_of_day=8)
+
+JOBS = [raw_exchange_flows_job]
+SCHEDULES = [raw_exchange_flows_schedule]
+
+ASSETS = [raw_exchange_flows]

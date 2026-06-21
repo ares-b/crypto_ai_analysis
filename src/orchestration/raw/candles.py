@@ -10,7 +10,6 @@ from dagster import (
     define_asset_job,
 )
 
-from orchestration.resources import BinanceClientResource, IcebergStoreResource
 from pipelines.raw.candles.config import DAILY_CANDLES, WEEKLY_CANDLES, BinanceCandleSettings
 from pipelines.raw.candles.run import run_binance_candles
 
@@ -60,8 +59,15 @@ def binance_candles_weekly(
     return _run(context, iceberg_store, binance_client, settings=WEEKLY_CANDLES, window_delta=timedelta(weeks=1))
 
 
+# 01:00 UTC - daily candle closes at midnight UTC
 raw_daily_candles_job = define_asset_job("raw_daily_candles_job", selection=[binance_candles_daily])
-raw_weekly_candles_job = define_asset_job("raw_weekly_candles_job", selection=[binance_candles_weekly])
+raw_daily_candles_schedule = build_schedule_from_partitioned_job(raw_daily_candles_job, hour_of_day=1)
 
-daily_candles_schedule = build_schedule_from_partitioned_job(raw_daily_candles_job, hour_of_day=2)
-weekly_candles_schedule = build_schedule_from_partitioned_job(raw_weekly_candles_job, hour_of_day=3, day_of_week=0)
+# Monday 01:00 UTC - weekly candle closes Sunday midnight UTC
+raw_weekly_candles_job = define_asset_job("raw_weekly_candles_job", selection=[binance_candles_weekly])
+raw_weekly_candles_schedule = build_schedule_from_partitioned_job(raw_weekly_candles_job, hour_of_day=1, day_of_week=0)
+
+JOBS = [raw_daily_candles_job, raw_weekly_candles_job]
+SCHEDULES = [raw_daily_candles_schedule, raw_weekly_candles_schedule]
+
+ASSETS = [binance_candles_daily, binance_candles_weekly]

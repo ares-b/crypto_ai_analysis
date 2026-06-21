@@ -3,7 +3,6 @@ from datetime import date
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
 daily_partitions = DailyPartitionsDefinition(start_date="2017-01-01", timezone="UTC")
-from orchestration.resources import HttpClientResource, IcebergStoreResource
 from pipelines.raw.onchain_metrics.config import ONCHAIN_SETTINGS
 from pipelines.raw.onchain_metrics.run import run_onchain_metrics
 
@@ -25,7 +24,11 @@ def raw_onchain_metrics(
         run_date=run_date,
     )
     return MaterializeResult(metadata=metrics)
-
-
+# 10:00 UTC - CoinMetrics daily metrics available ~10:00 UTC after overnight processing
 raw_onchain_metrics_job = define_asset_job("raw_onchain_metrics_job", selection=[raw_onchain_metrics])
-raw_onchain_metrics_schedule = build_schedule_from_partitioned_job(raw_onchain_metrics_job, hour_of_day=0)
+raw_onchain_metrics_schedule = build_schedule_from_partitioned_job(raw_onchain_metrics_job, hour_of_day=10)
+
+JOBS = [raw_onchain_metrics_job]
+SCHEDULES = [raw_onchain_metrics_schedule]
+
+ASSETS = [raw_onchain_metrics]

@@ -4,7 +4,6 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 
 _dominance_partitions = DailyPartitionsDefinition(start_date="2025-06-21", timezone="UTC")
 _stablecoin_partitions = DailyPartitionsDefinition(start_date="2026-06-20", timezone="UTC")
-from orchestration.resources import HttpClientResource, IcebergStoreResource
 from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
 from pipelines.raw.market_metrics.run import run_market_metrics, run_stablecoin_supply
 
@@ -43,10 +42,13 @@ def raw_stablecoin_supply(
     coingecko_client: HttpClientResource,
 ) -> MaterializeResult:
     return _run(context, iceberg_store, coingecko_client, fn=run_stablecoin_supply)
-
-
+# 01:00 UTC - crypto data closes at midnight UTC
 raw_market_metrics_job = define_asset_job("raw_market_metrics_job", selection=[raw_market_metrics])
+raw_market_metrics_schedule = build_schedule_from_partitioned_job(raw_market_metrics_job, hour_of_day=1)
 raw_stablecoin_supply_job = define_asset_job("raw_stablecoin_supply_job", selection=[raw_stablecoin_supply])
+raw_stablecoin_supply_schedule = build_schedule_from_partitioned_job(raw_stablecoin_supply_job, hour_of_day=1)
 
-raw_market_metrics_schedule = build_schedule_from_partitioned_job(raw_market_metrics_job, hour_of_day=7)
-raw_stablecoin_supply_schedule = build_schedule_from_partitioned_job(raw_stablecoin_supply_job, hour_of_day=8)
+JOBS = [raw_market_metrics_job, raw_stablecoin_supply_job]
+SCHEDULES = [raw_market_metrics_schedule, raw_stablecoin_supply_schedule]
+
+ASSETS = [raw_market_metrics, raw_stablecoin_supply]

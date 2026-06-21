@@ -3,7 +3,6 @@ from datetime import date
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
 daily_partitions = DailyPartitionsDefinition(start_date="2026-06-14", timezone="UTC")
-from orchestration.resources import HttpClientResource, IcebergStoreResource
 from pipelines.raw.sentiment_index.config import SENTIMENT_SETTINGS
 from pipelines.raw.sentiment_index.run import run_sentiment_index
 
@@ -25,7 +24,11 @@ def raw_sentiment_index(
         deribit_client=deribit_client.create() if SENTIMENT_SETTINGS.include_dvol else None,
     )
     return MaterializeResult(metadata=metrics)
-
-
+# 01:00 UTC - Alternative.me updates around midnight UTC
 raw_sentiment_index_job = define_asset_job("raw_sentiment_index_job", selection=[raw_sentiment_index])
-raw_sentiment_index_schedule = build_schedule_from_partitioned_job(raw_sentiment_index_job, hour_of_day=6)
+raw_sentiment_index_schedule = build_schedule_from_partitioned_job(raw_sentiment_index_job, hour_of_day=1)
+
+JOBS = [raw_sentiment_index_job]
+SCHEDULES = [raw_sentiment_index_schedule]
+
+ASSETS = [raw_sentiment_index]

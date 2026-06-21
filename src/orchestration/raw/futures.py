@@ -2,11 +2,11 @@ from datetime import UTC, datetime, timedelta
 
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-_binance_perp_partitions = DailyPartitionsDefinition(start_date="2019-09-13", timezone="UTC")
-_long_short_partitions = DailyPartitionsDefinition(start_date="2026-05-22", timezone="UTC")
-from orchestration.resources import BinanceClientResource, IcebergStoreResource
 from pipelines.raw.futures.config import DERIVATIVES_METRICS, FUNDING_RATES, LONG_SHORT_RATIO
 from pipelines.raw.futures.run import run_funding_rates, run_futures_metrics, run_long_short_ratio
+
+_binance_perp_partitions = DailyPartitionsDefinition(start_date="2019-09-13", timezone="UTC")
+_long_short_partitions = DailyPartitionsDefinition(start_date="2026-05-22", timezone="UTC")
 
 
 def _window(context: AssetExecutionContext) -> tuple[datetime, datetime]:
@@ -59,12 +59,14 @@ def raw_long_short_ratio(
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
     return _run(context, iceberg_store, binance_client, fn=run_long_short_ratio, settings=LONG_SHORT_RATIO)
-
-
-raw_funding_rates_job = define_asset_job("raw_funding_rates_job", selection=[raw_funding_rates])
-raw_futures_metrics_job = define_asset_job("raw_futures_metrics_job", selection=[raw_futures_metrics])
+# 01:00 UTC - crypto data closes at midnight UTC
+# funding_rates and futures_metrics share _binance_perp_partitions; merged into one trigger
+raw_binance_perp_job = define_asset_job("raw_binance_perp_job", selection=[raw_funding_rates, raw_futures_metrics])
+raw_binance_perp_schedule = build_schedule_from_partitioned_job(raw_binance_perp_job, hour_of_day=1)
 raw_long_short_ratio_job = define_asset_job("raw_long_short_ratio_job", selection=[raw_long_short_ratio])
+raw_long_short_ratio_schedule = build_schedule_from_partitioned_job(raw_long_short_ratio_job, hour_of_day=1)
 
-raw_funding_rates_schedule = build_schedule_from_partitioned_job(raw_funding_rates_job, hour_of_day=9)
-raw_futures_metrics_schedule = build_schedule_from_partitioned_job(raw_futures_metrics_job, hour_of_day=10)
-raw_long_short_ratio_schedule = build_schedule_from_partitioned_job(raw_long_short_ratio_job, hour_of_day=11)
+JOBS = [raw_binance_perp_job, raw_long_short_ratio_job]
+SCHEDULES = [raw_binance_perp_schedule, raw_long_short_ratio_schedule]
+
+ASSETS = [raw_funding_rates, raw_futures_metrics, raw_long_short_ratio]
