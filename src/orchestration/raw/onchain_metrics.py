@@ -5,6 +5,7 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 daily_partitions = DailyPartitionsDefinition(start_date="2017-01-01", timezone="UTC")
 from pipelines.raw.onchain_metrics.config import ONCHAIN_SETTINGS
 from pipelines.raw.onchain_metrics.run import run_onchain_metrics
+from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
 @asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "coinmetrics"})

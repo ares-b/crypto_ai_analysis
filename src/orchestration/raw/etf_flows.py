@@ -5,6 +5,7 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 daily_partitions = DailyPartitionsDefinition(start_date="2024-01-11", timezone="UTC")
 from pipelines.raw.etf_flows.config import ETF_FLOWS_SETTINGS
 from pipelines.raw.etf_flows.run import run_etf_flows
+from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
 @asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "farside"})

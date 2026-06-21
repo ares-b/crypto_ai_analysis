@@ -12,6 +12,7 @@ from dagster import (
 
 from pipelines.raw.candles.config import DAILY_CANDLES, WEEKLY_CANDLES, BinanceCandleSettings
 from pipelines.raw.candles.run import run_binance_candles
+from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
 _BINANCE_LAUNCH_DATE = "2017-08-17"
 

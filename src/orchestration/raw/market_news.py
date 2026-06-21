@@ -5,6 +5,7 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 daily_partitions = DailyPartitionsDefinition(start_date="2026-06-20", timezone="UTC")
 from pipelines.raw.market_news.config import MARKET_NEWS_SETTINGS
 from pipelines.raw.market_news.run import run_market_news
+from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
 @asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "rss"})

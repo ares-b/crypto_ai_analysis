@@ -4,6 +4,7 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 
 from pipelines.raw.futures.config import DERIVATIVES_METRICS, FUNDING_RATES, LONG_SHORT_RATIO
 from pipelines.raw.futures.run import run_funding_rates, run_futures_metrics, run_long_short_ratio
+from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
 _binance_perp_partitions = DailyPartitionsDefinition(start_date="2019-09-13", timezone="UTC")
 _long_short_partitions = DailyPartitionsDefinition(start_date="2026-05-22", timezone="UTC")

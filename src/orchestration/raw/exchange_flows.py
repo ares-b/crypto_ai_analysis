@@ -5,6 +5,7 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 daily_partitions = DailyPartitionsDefinition(start_date="2019-01-01", timezone="UTC")
 from pipelines.raw.exchange_flows.config import EXCHANGE_FLOW_SETTINGS
 from pipelines.raw.exchange_flows.run import run_exchange_flows
+from orchestration.resources import CryptoQuantClientResource, IcebergStoreResource
 
 
 @asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "cryptoquant"})

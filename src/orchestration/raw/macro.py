@@ -7,6 +7,7 @@ from pipelines.raw.macro_calendar.config import MACRO_CALENDAR_SETTINGS
 from pipelines.raw.macro_calendar.run import run_macro_calendar
 from pipelines.raw.macro_series.config import MACRO_SERIES_SETTINGS
 from pipelines.raw.macro_series.run import run_macro_series
+from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
 def _run(

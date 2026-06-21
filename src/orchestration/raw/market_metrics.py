@@ -6,6 +6,7 @@ _dominance_partitions = DailyPartitionsDefinition(start_date="2025-06-21", timez
 _stablecoin_partitions = DailyPartitionsDefinition(start_date="2026-06-20", timezone="UTC")
 from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
 from pipelines.raw.market_metrics.run import run_market_metrics, run_stablecoin_supply
+from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
 def _run(
