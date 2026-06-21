@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Env / secrets
+.env
+.env.*
+*.sops.yaml
+age.key
+
+# Dagster
+$DAGSTER_HOME/
+.dagster/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Mypy
+.mypy_cache/
