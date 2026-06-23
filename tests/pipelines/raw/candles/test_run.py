@@ -1,12 +1,10 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 from binance.exceptions import BinanceAPIException
 
-from pipelines.raw.candles.run import MAX_KLINES_LIMIT, fetch_candles, run_binance_candles
+from pipelines.raw.candles.run import _MAX_KLINES_LIMIT, fetch_candles, run_binance_candles
 from tests.conftest import MemoryStore, make_kline
 
 PAST_MS = 1717200000000   # 2024-06-01 00:00:00 UTC — well in the past
@@ -52,7 +50,7 @@ class TestFetchCandles:
         now_ms = CLOSE_MS + 10_000_000
         mocker.patch("pipelines.raw.candles.run.utc_now_ms", return_value=now_ms)
         client = MagicMock()
-        full_batch = [make_kline(PAST_MS + i, CLOSE_MS + i) for i in range(MAX_KLINES_LIMIT)]
+        full_batch = [make_kline(PAST_MS + i, CLOSE_MS + i) for i in range(_MAX_KLINES_LIMIT)]
         client.get_klines.side_effect = [full_batch, []]
 
         result = fetch_candles(

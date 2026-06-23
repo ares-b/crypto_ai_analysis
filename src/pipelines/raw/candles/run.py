@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import time
 from dataclasses import dataclass
@@ -16,7 +14,7 @@ from pipelines import MetricValue
 from .config import BinanceCandleSettings
 from .models import BinanceCandleRow, RawKline
 
-MAX_KLINES_LIMIT = 1000
+_MAX_KLINES_LIMIT = 1000
 _MAX_RATE_LIMIT_RETRIES = 3
 
 
@@ -51,7 +49,7 @@ def fetch_candles(
                     interval=settings.interval,
                     startTime=next_start_ms,
                     endTime=effective_end_ms,
-                    limit=MAX_KLINES_LIMIT,
+                    limit=_MAX_KLINES_LIMIT,
                 )
                 break
             except BinanceAPIException as error:
@@ -72,7 +70,7 @@ def fetch_candles(
         parsed = [RawKline.from_api_response(item) for item in batch]
         klines.extend(parsed)
         next_start_ms = parsed[-1].open_time_ms + 1
-        if len(batch) < MAX_KLINES_LIMIT:
+        if len(batch) < _MAX_KLINES_LIMIT:
             break
 
     candles = [

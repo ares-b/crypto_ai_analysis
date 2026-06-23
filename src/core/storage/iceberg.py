@@ -1,27 +1,67 @@
-from __future__ import annotations
-
 import os
 from collections.abc import Sequence
+from pathlib import Path
 from time import perf_counter
+from typing import Self
 
 import polars as pl
+from pyiceberg.catalog import load_catalog
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ._base import Store, WriteResult
 from ._spec import TableSpec, coerce_to_schema
 
 
-class IcebergStore(Store):
-    """Production Iceberg table store backed by a pyiceberg catalog.
+class IcebergCatalogSettings(BaseModel):
+    """Iceberg REST catalog connection config.
 
-    Use :meth:`from_env` for CLI/init scripts, :meth:`from_config` when you need
-    explicit catalog properties (tests, multi-tenant setups).
+    Reads from ICEBERG_CATALOG_* env vars by default; fields can be overridden
+    directly for tests or local dev. Raises ValueError on missing required
+    fields so callers get an actionable message, not a raw KeyError.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    uri: str = Field(default_factory=lambda: os.environ.get("ICEBERG_CATALOG_URI", ""))
+    warehouse: str = Field(default_factory=lambda: os.environ.get("ICEBERG_CATALOG_WAREHOUSE", ""))
+    catalog_name: str = Field(
+        default_factory=lambda: os.environ.get("ICEBERG_CATALOG_NAME", "lakehouse")
+    )
+    token_file: str = Field(
+        default_factory=lambda: os.environ.get(
+            "ICEBERG_CATALOG_TOKEN_FILE", "/var/run/secrets/tokens/catalog"
+        )
+    )
+
+    @model_validator(mode="after")
+    def _validate_required(self) -> Self:
+        if not self.uri:
+            raise ValueError(
+                "ICEBERG_CATALOG_URI is required. "
+                "Set it to the REST catalog endpoint "
+                "(e.g. http://lakekeeper.lakekeeper.svc.cluster.local:8181/catalog)."
+            )
+        if not self.warehouse:
+            raise ValueError(
+                "ICEBERG_CATALOG_WAREHOUSE is required. "
+                "Set it to the warehouse name registered in the catalog (e.g. 'crypto-ai-analysis')."
+            )
+        return self
+
+
+class IcebergStore(Store):
+    """Production Iceberg table store backed by an Iceberg REST catalog.
+
+    Storage credentials are vended by the catalog via remote signing; this client
+    needs no S3 keys. Use from_env() in production and from_config() for explicit
+    catalog properties (integration tests, local dev with a real catalog).
     """
 
     def __init__(self, catalog: object, specs: Sequence[TableSpec]) -> None:
         self._catalog = catalog
-        self._specs: dict[str, TableSpec] = {
-            f"{s.namespace}.{s.name}": s for s in specs
-        } | {s.name: s for s in specs}
+        self._specs: dict[str, TableSpec] = (
+            {f"{s.namespace}.{s.name}": s for s in specs} | {s.name: s for s in specs}
+        )
 
     @classmethod
     def from_config(
@@ -30,54 +70,52 @@ class IcebergStore(Store):
         *,
         name: str,
         properties: dict[str, str],
-    ) -> IcebergStore:
+    ) -> Self:
         cls._set_s3_checksum_defaults()
-        from pyiceberg.catalog import load_catalog
-
         return cls(load_catalog(name, **properties), specs)
 
     @classmethod
-    def from_env(cls, specs: Sequence[TableSpec]) -> IcebergStore:
-        """Build from ``ICEBERG_*`` env vars and ensure all tables exist.
+    def from_env(cls, specs: Sequence[TableSpec]) -> Self:
+        """Build from ICEBERG_CATALOG_* env vars and ensure all tables exist.
 
-        Calls :meth:`create_all` so callers can write immediately after construction.
+        Token is read fresh on every call. Dagster creates a new IcebergStore
+        per asset run (via IcebergStoreResource.create()), so the token is
+        always within its ~1h TTL for any single run.
         """
+        settings = IcebergCatalogSettings()
         store = cls.from_config(
             specs,
-            name=os.getenv("ICEBERG_CATALOG_NAME", "dca"),
-            properties=cls._catalog_properties(
-                catalog_uri=os.environ["ICEBERG_CATALOG_URI"],
-                warehouse=os.environ["ICEBERG_WAREHOUSE"],
-                s3_endpoint=os.environ["ICEBERG_S3_ENDPOINT"],
-                s3_access_key_id=os.environ["ICEBERG_S3_ACCESS_KEY_ID"],
-                s3_secret_access_key=os.environ["ICEBERG_S3_SECRET_ACCESS_KEY"],
-                s3_region=os.getenv("ICEBERG_S3_REGION", "garage"),
-            ),
+            name=settings.catalog_name,
+            properties={
+                "type": "rest",
+                "uri": settings.uri,
+                "warehouse": settings.warehouse,
+                "token": cls._read_token(settings),
+            },
         )
         store.create_all()
         return store
 
     @staticmethod
-    def _catalog_properties(
-        *,
-        catalog_uri: str,
-        warehouse: str,
-        s3_endpoint: str,
-        s3_access_key_id: str,
-        s3_secret_access_key: str,
-        s3_region: str = "garage",
-    ) -> dict[str, str]:
-        return {
-            "type": "sql",
-            "uri": catalog_uri,
-            "warehouse": warehouse,
-            "s3.endpoint": s3_endpoint,
-            "s3.access-key-id": s3_access_key_id,
-            "s3.secret-access-key": s3_secret_access_key,
-            "s3.region": s3_region,
-            "s3.path-style-access": "true",
-            "py-io-impl": "pyiceberg.io.fsspec.FsspecFileIO",
-        }
+    def _read_token(settings: IcebergCatalogSettings) -> str:
+        """Read the SA bearer token.
+
+        ICEBERG_CATALOG_TOKEN env var takes precedence; use it for local dev or CI
+        where the k8s projected token file is not available.
+        In production, the token is a projected k8s ServiceAccount token
+        auto-rotated by kubelet every ~1h.
+        """
+        static = os.environ.get("ICEBERG_CATALOG_TOKEN")
+        if static:
+            return static
+        try:
+            return Path(settings.token_file).read_text().strip()
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                f"SA token file not found at {settings.token_file!r}. "
+                "In production, ensure the pod mounts the projected SA token at that path. "
+                "For local dev or CI, set ICEBERG_CATALOG_TOKEN to a static bearer token."
+            ) from exc
 
     def create_all(self) -> None:
         namespaces = {s.namespace for s in self._specs.values()}
@@ -136,12 +174,10 @@ class IcebergStore(Store):
         return spec
 
     def _sync_metadata(self, identifier: tuple[str, str]) -> None:
-        """Copy the versioned metadata file to a stable ``current.metadata.json`` path.
+        """Copy versioned metadata to a stable current.metadata.json path.
 
-        Garage (and some S3-compatible stores) do not support atomic renames, so
-        pyiceberg leaves metadata at a UUID-suffixed path after each commit.
-        Copying to a fixed location lets external tools discover the current
-        snapshot without listing the metadata directory.
+        Garage has no atomic rename. This stable path lets external tools
+        discover the current snapshot without listing the metadata directory.
         """
         iceberg_table = self._catalog.load_table(identifier)
         current = iceberg_table.metadata_location
@@ -164,6 +200,6 @@ class IcebergStore(Store):
 
     @staticmethod
     def _set_s3_checksum_defaults() -> None:
-        # Garage returns checksum headers that break botocore range-read validation
+        # Garage returns checksum headers that break botocore range-read validation.
         os.environ.setdefault("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
         os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")

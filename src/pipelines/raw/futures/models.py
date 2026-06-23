@@ -3,7 +3,7 @@ from typing import Any, Mapping
 
 from pydantic import ValidationError
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 from .config import FundingRateSettings, FuturesMetricSettings, LongShortSettings
 
@@ -85,7 +85,7 @@ class RawPremiumIndexKline(StoreRow):
             raise ValueError(f"Invalid Binance premium-index kline payload: {payload!r}") from error
 
 
-class FundingRateRow(StoreRow):
+class FundingRateRow(IcebergRow, table="raw.funding_rates", identity=("instrument", "counterpart", "funding_time")):
     instrument: str
     counterpart: str
     funding_time: datetime
@@ -107,7 +107,7 @@ class FundingRateRow(StoreRow):
         )
 
 
-class FuturesMetricRow(StoreRow):
+class FuturesMetricRow(IcebergRow, table="raw.futures_metrics", identity=("instrument", "counterpart", "date")):
     instrument: str
     counterpart: str
     date: date
@@ -139,7 +139,7 @@ class FuturesMetricRow(StoreRow):
         )
 
 
-class LongShortRatioRow(StoreRow):
+class LongShortRatioRow(IcebergRow, table="raw.long_short_ratio", identity=("instrument", "counterpart", "date")):
     instrument: str
     counterpart: str
     date: date

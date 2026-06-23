@@ -1,10 +1,10 @@
 from datetime import UTC, date, datetime
 from typing import Any
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
-class SentimentRow(StoreRow):
+class SentimentRow(IcebergRow, table="raw.sentiment_index", identity=("date",)):
     date: date
     fear_greed_value: int | None
     fear_greed_label: str | None
@@ -31,7 +31,7 @@ def build_rows(
     return rows
 
 
-class DeribitDvolRow(StoreRow):
+class DeribitDvolRow(IcebergRow, table="raw.deribit_dvol", identity=("date",)):
     date: date
     dvol: float | None
     source_updated_at: datetime
@@ -44,7 +44,7 @@ def build_dvol_rows(dvol_by_date: dict[date, float], *, source_updated_at: datet
     ]
 
 
-class DeribitPutCallRow(StoreRow):
+class DeribitPutCallRow(IcebergRow, table="raw.deribit_put_call", identity=("date",)):
     date: date
     put_oi: float | None
     call_oi: float | None

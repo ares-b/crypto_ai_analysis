@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,7 @@ class RawHistoricalBtcDominancePoint:
             raise ValueError(f"Invalid CoinGecko historical BTC dominance payload: {payload!r}") from error
 
 
-class MarketMetricRow(StoreRow):
+class MarketMetricRow(IcebergRow, table="raw.market_metrics", identity=("date",)):
     date: date
     btc_dominance_pct: float
     source_updated_at: datetime
@@ -65,7 +65,7 @@ class MarketMetricRow(StoreRow):
         )
 
 
-class StablecoinSupplyRow(StoreRow):
+class StablecoinSupplyRow(IcebergRow, table="raw.stablecoin_supply", identity=("date",)):
     date: date
     usdt_market_cap_usd: float | None
     usdc_market_cap_usd: float | None

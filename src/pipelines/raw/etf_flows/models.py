@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
 @dataclass(frozen=True)
@@ -10,7 +10,7 @@ class EtfFlow:
     net_flow_usd: float
 
 
-class EtfFlowRow(StoreRow):
+class EtfFlowRow(IcebergRow, table="raw.etf_flows", identity=("date",)):
     date: date
     net_flow_usd: float
     source_updated_at: datetime

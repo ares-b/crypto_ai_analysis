@@ -3,10 +3,10 @@ from typing import Any, Mapping
 
 from pydantic import ValidationError
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
-class ExchangeFlowRow(StoreRow):
+class ExchangeFlowRow(IcebergRow, table="raw.exchange_flows", identity=("date", "asset", "exchange")):
     date: date
     asset: str
     exchange: str

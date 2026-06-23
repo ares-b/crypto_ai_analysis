@@ -7,8 +7,7 @@ from core.storage import IcebergRow, TableSpec
 
 
 def _collect_specs() -> tuple[TableSpec, ...]:
-    # Import every pipeline module so IcebergRow subclasses register TABLE_SPEC,
-    # then collect via __subclasses__(). Single source of truth for schema derivation.
+    # Import every pipeline module so IcebergRow subclasses register their TABLE_SPEC.
     for _mod in pkgutil.walk_packages(pipelines.__path__, prefix="pipelines."):
         importlib.import_module(_mod.name)
 

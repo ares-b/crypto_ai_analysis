@@ -21,7 +21,7 @@ from .models import (
     RawPremiumIndexKline,
 )
 
-MAX_FUNDING_RATE_LIMIT = 1000
+_MAX_FUNDING_RATE_LIMIT = 1000
 _MAX_RATE_LIMIT_RETRIES = 3
 
 
@@ -73,7 +73,7 @@ def fetch_funding_rates(
                 symbol=settings.symbol,
                 startTime=next_start_ms,
                 endTime=end_ms,
-                limit=MAX_FUNDING_RATE_LIMIT,
+                limit=_MAX_FUNDING_RATE_LIMIT,
             ),
             logger=logger,
             label=label,
@@ -85,7 +85,7 @@ def fetch_funding_rates(
             FundingRateRow.from_raw(RawFundingRate.from_api_response(item), settings=settings)
             for item in batch
         )
-        if len(batch) < MAX_FUNDING_RATE_LIMIT:
+        if len(batch) < _MAX_FUNDING_RATE_LIMIT:
             break
         next_start_ms = int(batch[-1]["fundingTime"]) + 1
 

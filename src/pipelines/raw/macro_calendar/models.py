@@ -1,10 +1,10 @@
 from datetime import UTC, date, datetime
 from typing import Any
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
-class MacroCalendarRow(StoreRow):
+class MacroCalendarRow(IcebergRow, table="raw.macro_calendar", identity=("event_id",)):
     event_id: str
     event_time_utc: datetime
     title: str

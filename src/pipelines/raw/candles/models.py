@@ -3,8 +3,7 @@ from typing import Any, ClassVar, Self, Sequence
 
 from pydantic import ValidationError
 
-from core.models import StoreRow
-from core.storage import IcebergRow
+from core.models import IcebergRow, StoreRow
 from .config import BinanceCandleSettings
 
 

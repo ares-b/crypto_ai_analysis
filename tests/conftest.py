@@ -11,9 +11,6 @@ from pipelines.raw.candles.config import BinanceCandleSettings
 from pipelines.raw.futures.config import FundingRateSettings, FuturesMetricSettings
 
 
-# ---------------------------------------------------------------------------
-# MemoryStore
-# ---------------------------------------------------------------------------
 
 class MemoryStore:
     def __init__(self) -> None:
@@ -34,9 +31,6 @@ class MemoryStore:
         return WriteResult(rows_inserted=len(frame), rows_updated=0, write_duration_seconds=0.0)
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def memory_store() -> MemoryStore:
@@ -73,9 +67,6 @@ def futures_metric_settings() -> FuturesMetricSettings:
     return FuturesMetricSettings()
 
 
-# ---------------------------------------------------------------------------
-# Raw Binance payloads
-# ---------------------------------------------------------------------------
 
 def make_kline(open_time_ms: int = 1717200000000, close_time_ms: int = 1717286399999) -> list:
     return [

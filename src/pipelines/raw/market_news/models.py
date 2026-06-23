@@ -2,7 +2,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
 @dataclass(frozen=True)
@@ -18,7 +18,7 @@ def content_hash(url: str, title: str, summary: str | None = None) -> str:
     return hashlib.sha256(f"{url}\n{title}\n{summary or ''}".encode()).hexdigest()
 
 
-class MarketNewsItemRow(StoreRow):
+class MarketNewsItemRow(IcebergRow, table="raw.market_news_items", identity=("content_hash",)):
     source_url: str
     content_hash: str
     source_name: str | None

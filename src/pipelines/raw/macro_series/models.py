@@ -1,10 +1,10 @@
 from datetime import date, datetime
 from typing import Any
 
-from core.models import StoreRow
+from core.models import IcebergRow, StoreRow
 
 
-class MacroSeriesRow(StoreRow):
+class MacroSeriesRow(IcebergRow, table="raw.macro_series", identity=("series_id", "date")):
     series_id: str
     date: date
     value: float | None

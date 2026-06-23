@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
@@ -8,7 +6,7 @@ from binance.exceptions import BinanceAPIException
 
 from pipelines.raw.futures.config import LongShortSettings
 from pipelines.raw.futures.run import (
-    MAX_FUNDING_RATE_LIMIT,
+    _MAX_FUNDING_RATE_LIMIT,
     fetch_funding_rates,
     fetch_futures_metric,
     fetch_long_short_ratio,
@@ -71,8 +69,8 @@ class TestFetchFundingRates:
 
     def test_pagination_triggers_next_page(self, logger, funding_rate_settings, window_start, window_end, mocker):
         mocker.patch("pipelines.raw.futures.run.utc_now_ms", return_value=PAST_MS + 10_000_000)
-        full_batch = [make_funding_rate_payload(PAST_MS + i * 1000) for i in range(MAX_FUNDING_RATE_LIMIT)]
-        second_batch = [make_funding_rate_payload(PAST_MS + (MAX_FUNDING_RATE_LIMIT + 1) * 1000)]
+        full_batch = [make_funding_rate_payload(PAST_MS + i * 1000) for i in range(_MAX_FUNDING_RATE_LIMIT)]
+        second_batch = [make_funding_rate_payload(PAST_MS + (_MAX_FUNDING_RATE_LIMIT + 1) * 1000)]
         client = MagicMock()
         client.futures_funding_rate.side_effect = [full_batch, second_batch]
 
@@ -81,7 +79,7 @@ class TestFetchFundingRates:
             window_start=window_start, window_end=window_end,
         )
         assert client.futures_funding_rate.call_count == 2
-        assert len(rows) == MAX_FUNDING_RATE_LIMIT + 1
+        assert len(rows) == _MAX_FUNDING_RATE_LIMIT + 1
 
     def test_window_start_after_end_returns_empty(self, logger, funding_rate_settings, mocker):
         mocker.patch("pipelines.raw.futures.run.utc_now_ms", return_value=PAST_MS + 10_000_000)
