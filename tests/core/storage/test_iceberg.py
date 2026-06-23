@@ -1,14 +1,36 @@
-from __future__ import annotations
-
 import logging
-from unittest.mock import MagicMock, patch
+from datetime import datetime
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from pydantic import ValidationError
+from pyiceberg.table.sorting import NullOrder, SortDirection
 
 from core.iceberg.store import IcebergCatalogSettings, IcebergStore
+from core.iceberg.table import TableSpec, build_iceberg_schema, build_partition_spec, build_sort_order
 
 
+def _make_schema():
+    return build_iceberg_schema({"ts": datetime, "symbol": str})
+
+
+def _make_table_mock(schema, partition_spec=None, sort_order=None):
+    table = MagicMock()
+    table.schema.return_value = schema
+    table.spec.return_value = MagicMock(fields=partition_spec.fields if partition_spec else [])
+    table.sort_order.return_value = MagicMock(fields=sort_order.fields if sort_order else [])
+    # Short-circuit _sync_metadata by using a stable path already.
+    table.metadata_location = "s3://bucket/ns/tbl/metadata/current.metadata.json"
+    return table
+
+
+def _mock_catalog(table_mock=None):
+    catalog = MagicMock()
+    catalog.table_exists.return_value = False
+    if table_mock is not None:
+        catalog.table_exists.return_value = True
+        catalog.load_table.return_value = table_mock
+    return catalog
 
 
 class TestIcebergCatalogSettings:
@@ -70,8 +92,6 @@ class TestIcebergCatalogSettings:
             s.uri = "changed"  # type: ignore[misc]
 
 
-
-
 class TestReadToken:
     def test_env_var_takes_precedence_over_file(self, monkeypatch, tmp_path):
         token_path = tmp_path / "token"
@@ -128,14 +148,6 @@ class TestReadToken:
         assert isinstance(exc_info.value.__cause__, FileNotFoundError)
 
 
-
-
-def _mock_catalog() -> MagicMock:
-    catalog = MagicMock()
-    catalog.table_exists.return_value = True
-    return catalog
-
-
 class TestFromEnv:
     def _setup_env(self, monkeypatch, *, uri="http://catalog:8181/catalog", warehouse="wh"):
         monkeypatch.setenv("ICEBERG_CATALOG_URI", uri)
@@ -143,10 +155,11 @@ class TestFromEnv:
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN", "test-bearer-token")
         monkeypatch.delenv("ICEBERG_CATALOG_NAME", raising=False)
 
-    def test_calls_load_catalog_with_rest_properties(self, monkeypatch):
+    def test_calls_load_catalog_with_rest_properties(self, monkeypatch, mocker):
         self._setup_env(monkeypatch)
-        with patch("core.iceberg.store.load_catalog", return_value=_mock_catalog()) as mock_load:
-            IcebergStore.from_env([])
+        mock_load = mocker.patch("core.iceberg.store.load_catalog", return_value=_mock_catalog())
+
+        IcebergStore.from_env([])
 
         mock_load.assert_called_once_with(
             "lakehouse",
@@ -156,54 +169,61 @@ class TestFromEnv:
             token="test-bearer-token",
         )
 
-    def test_custom_catalog_name(self, monkeypatch):
+    def test_custom_catalog_name(self, monkeypatch, mocker):
         self._setup_env(monkeypatch)
         monkeypatch.setenv("ICEBERG_CATALOG_NAME", "my-catalog")
-        with patch("core.iceberg.store.load_catalog", return_value=_mock_catalog()) as mock_load:
-            IcebergStore.from_env([])
+        mock_load = mocker.patch("core.iceberg.store.load_catalog", return_value=_mock_catalog())
+
+        IcebergStore.from_env([])
+
         assert mock_load.call_args[0][0] == "my-catalog"
 
-    def test_create_all_called(self, monkeypatch):
+    def test_create_all_called(self, monkeypatch, mocker):
         self._setup_env(monkeypatch)
-        catalog = _mock_catalog()
-        with patch("core.iceberg.store.load_catalog", return_value=catalog):
-            IcebergStore.from_env([])
+        mocker.patch("core.iceberg.store.load_catalog", return_value=_mock_catalog())
+        IcebergStore.from_env([])
 
-    def test_missing_uri_raises_before_catalog(self, monkeypatch):
+    def test_missing_uri_raises_before_catalog(self, monkeypatch, mocker):
         monkeypatch.delenv("ICEBERG_CATALOG_URI", raising=False)
         monkeypatch.setenv("ICEBERG_CATALOG_WAREHOUSE", "wh")
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN", "tok")
-        with patch("core.iceberg.store.load_catalog") as mock_load:
-            with pytest.raises(ValidationError, match="ICEBERG_CATALOG_URI"):
-                IcebergStore.from_env([])
+        mock_load = mocker.patch("core.iceberg.store.load_catalog")
+
+        with pytest.raises(ValidationError, match="ICEBERG_CATALOG_URI"):
+            IcebergStore.from_env([])
+
         mock_load.assert_not_called()
 
-    def test_missing_warehouse_raises_before_catalog(self, monkeypatch):
+    def test_missing_warehouse_raises_before_catalog(self, monkeypatch, mocker):
         monkeypatch.setenv("ICEBERG_CATALOG_URI", "http://catalog:8181/catalog")
         monkeypatch.delenv("ICEBERG_CATALOG_WAREHOUSE", raising=False)
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN", "tok")
-        with patch("core.iceberg.store.load_catalog") as mock_load:
-            with pytest.raises(ValidationError, match="ICEBERG_CATALOG_WAREHOUSE"):
-                IcebergStore.from_env([])
+        mock_load = mocker.patch("core.iceberg.store.load_catalog")
+
+        with pytest.raises(ValidationError, match="ICEBERG_CATALOG_WAREHOUSE"):
+            IcebergStore.from_env([])
+
         mock_load.assert_not_called()
 
-    def test_missing_token_file_raises_before_catalog(self, monkeypatch, tmp_path):
+    def test_missing_token_file_raises_before_catalog(self, monkeypatch, mocker, tmp_path):
         self._setup_env(monkeypatch)
         monkeypatch.delenv("ICEBERG_CATALOG_TOKEN", raising=False)
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN_FILE", str(tmp_path / "nonexistent"))
-        with patch("core.iceberg.store.load_catalog") as mock_load:
-            with pytest.raises(RuntimeError, match="ICEBERG_CATALOG_TOKEN"):
-                IcebergStore.from_env([])
+        mock_load = mocker.patch("core.iceberg.store.load_catalog")
+
+        with pytest.raises(RuntimeError, match="ICEBERG_CATALOG_TOKEN"):
+            IcebergStore.from_env([])
+
         mock_load.assert_not_called()
 
-    def test_token_not_logged(self, monkeypatch, caplog):
+    def test_token_not_logged(self, monkeypatch, mocker, caplog):
         self._setup_env(monkeypatch)
-        with patch("core.iceberg.store.load_catalog", return_value=_mock_catalog()):
-            with caplog.at_level(logging.DEBUG):
-                IcebergStore.from_env([])
+        mocker.patch("core.iceberg.store.load_catalog", return_value=_mock_catalog())
+
+        with caplog.at_level(logging.DEBUG):
+            IcebergStore.from_env([])
+
         assert "test-bearer-token" not in caplog.text
-
-
 
 
 class TestStableMetadataPath:
@@ -227,3 +247,200 @@ class TestStableMetadataPath:
         store._sync_metadata(("ns", "tbl"))
 
         iceberg_table.io.new_input.assert_not_called()
+
+
+class TestPartitionSpecMatches:
+    def test_both_unpartitioned_matches(self):
+        schema = _make_schema()
+        table = _make_table_mock(schema)
+        spec = TableSpec(("raw", "t"), schema, ())
+        assert IcebergStore._partition_spec_matches(table, spec)
+
+    def test_same_transform_and_column_matches(self):
+        schema = _make_schema()
+        ps = build_partition_spec(("months(ts)",), schema)
+        table = _make_table_mock(schema, partition_spec=ps)
+        spec = TableSpec(("raw", "t"), schema, (), partition_spec=ps)
+        assert IcebergStore._partition_spec_matches(table, spec)
+
+    def test_different_transform_no_match(self):
+        schema = _make_schema()
+        current_ps = build_partition_spec(("months(ts)",), schema)
+        desired_ps = build_partition_spec(("years(ts)",), schema)
+        table = _make_table_mock(schema, partition_spec=current_ps)
+        spec = TableSpec(("raw", "t"), schema, (), partition_spec=desired_ps)
+        assert not IcebergStore._partition_spec_matches(table, spec)
+
+    def test_different_column_no_match(self):
+        schema = _make_schema()
+        current_ps = build_partition_spec(("months(ts)",), schema)
+        desired_ps = build_partition_spec(("months(symbol)",), schema)
+        table = _make_table_mock(schema, partition_spec=current_ps)
+        spec = TableSpec(("raw", "t"), schema, (), partition_spec=desired_ps)
+        assert not IcebergStore._partition_spec_matches(table, spec)
+
+    def test_length_mismatch_no_match(self):
+        schema = _make_schema()
+        current_ps = build_partition_spec(("months(ts)", "identity(symbol)"), schema)
+        desired_ps = build_partition_spec(("months(ts)",), schema)
+        table = _make_table_mock(schema, partition_spec=current_ps)
+        spec = TableSpec(("raw", "t"), schema, (), partition_spec=desired_ps)
+        assert not IcebergStore._partition_spec_matches(table, spec)
+
+    def test_partitioned_vs_unpartitioned_no_match(self):
+        schema = _make_schema()
+        current_ps = build_partition_spec(("months(ts)",), schema)
+        table = _make_table_mock(schema, partition_spec=current_ps)
+        spec = TableSpec(("raw", "t"), schema, ())
+        assert not IcebergStore._partition_spec_matches(table, spec)
+
+
+class TestSortOrderMatches:
+    def test_both_unsorted_matches(self):
+        schema = _make_schema()
+        table = _make_table_mock(schema)
+        spec = TableSpec(("raw", "t"), schema, ())
+        assert IcebergStore._sort_order_matches(table, spec)
+
+    def test_same_sort_order_matches(self):
+        schema = _make_schema()
+        so = build_sort_order(("ts",), schema)
+        table = _make_table_mock(schema, sort_order=so)
+        spec = TableSpec(("raw", "t"), schema, (), sort_order=so)
+        assert IcebergStore._sort_order_matches(table, spec)
+
+    def test_different_column_no_match(self):
+        schema = _make_schema()
+        current_so = build_sort_order(("ts",), schema)
+        desired_so = build_sort_order(("symbol",), schema)
+        table = _make_table_mock(schema, sort_order=current_so)
+        spec = TableSpec(("raw", "t"), schema, (), sort_order=desired_so)
+        assert not IcebergStore._sort_order_matches(table, spec)
+
+    def test_length_mismatch_no_match(self):
+        schema = _make_schema()
+        current_so = build_sort_order(("ts", "symbol"), schema)
+        desired_so = build_sort_order(("ts",), schema)
+        table = _make_table_mock(schema, sort_order=current_so)
+        spec = TableSpec(("raw", "t"), schema, (), sort_order=desired_so)
+        assert not IcebergStore._sort_order_matches(table, spec)
+
+    def test_sorted_vs_unsorted_no_match(self):
+        schema = _make_schema()
+        current_so = build_sort_order(("ts",), schema)
+        table = _make_table_mock(schema, sort_order=current_so)
+        spec = TableSpec(("raw", "t"), schema, ())
+        assert not IcebergStore._sort_order_matches(table, spec)
+
+
+class TestApplyPartitionSpec:
+    def test_removes_old_and_adds_new(self):
+        schema = _make_schema()
+        old_ps = build_partition_spec(("months(ts)",), schema)
+        new_ps = build_partition_spec(("years(ts)",), schema)
+
+        update_mock = MagicMock()
+        table = MagicMock()
+        table.schema.return_value = schema
+        table.spec.return_value = old_ps
+        table.update_spec.return_value = update_mock
+
+        spec = TableSpec(("raw", "t"), schema, (), partition_spec=new_ps)
+        IcebergStore._apply_partition_spec(table, spec)
+
+        update_mock.remove_field.assert_called_once_with(old_ps.fields[0].name)
+        update_mock.add_field.assert_called_once()
+        update_mock.commit.assert_called_once()
+
+    def test_clears_to_unpartitioned(self):
+        schema = _make_schema()
+        old_ps = build_partition_spec(("months(ts)",), schema)
+
+        update_mock = MagicMock()
+        table = MagicMock()
+        table.schema.return_value = schema
+        table.spec.return_value = old_ps
+        table.update_spec.return_value = update_mock
+
+        spec = TableSpec(("raw", "t"), schema, ())
+        IcebergStore._apply_partition_spec(table, spec)
+
+        update_mock.remove_field.assert_called_once_with(old_ps.fields[0].name)
+        update_mock.add_field.assert_not_called()
+        update_mock.commit.assert_called_once()
+
+
+class TestApplySortOrder:
+    def test_adds_asc_field(self):
+        schema = _make_schema()
+        so = build_sort_order(("ts",), schema)
+
+        update_mock = MagicMock()
+        table = MagicMock()
+        table.update_sort_order.return_value = update_mock
+
+        spec = TableSpec(("raw", "t"), schema, (), sort_order=so)
+        IcebergStore._apply_sort_order(table, spec)
+
+        update_mock.asc.assert_called_once_with("ts", ANY, NullOrder.NULLS_FIRST)
+        update_mock.commit.assert_called_once()
+
+    def test_clears_to_unsorted(self):
+        schema = _make_schema()
+        update_mock = MagicMock()
+        table = MagicMock()
+        table.update_sort_order.return_value = update_mock
+
+        spec = TableSpec(("raw", "t"), schema, ())
+        IcebergStore._apply_sort_order(table, spec)
+
+        update_mock.asc.assert_not_called()
+        update_mock.desc.assert_not_called()
+        update_mock.commit.assert_called_once()
+
+
+class TestCreateAll:
+    def test_creates_table_when_missing(self):
+        schema = _make_schema()
+        ps = build_partition_spec(("months(ts)",), schema)
+        so = build_sort_order(("ts",), schema)
+        spec = TableSpec(("raw", "candles"), schema, ("ts",), partition_spec=ps, sort_order=so)
+
+        catalog = _mock_catalog()
+        mock_table = MagicMock()
+        mock_table.metadata_location = "s3://b/ns/t/metadata/current.metadata.json"
+        catalog.load_table.return_value = mock_table
+
+        IcebergStore(catalog, [spec]).create_all()
+
+        catalog.create_table.assert_called_once()
+        call_kwargs = catalog.create_table.call_args[1]
+        assert "partition_spec" in call_kwargs
+        assert "sort_order" in call_kwargs
+
+    def test_reconciles_existing_table(self, mocker):
+        schema = _make_schema()
+        spec = TableSpec(("raw", "candles"), schema, ("ts",))
+
+        table_mock = _make_table_mock(schema)
+        catalog = _mock_catalog(table_mock)
+
+        mock_reconcile = mocker.patch.object(IcebergStore, "_reconcile")
+        IcebergStore(catalog, [spec]).create_all()
+
+        mock_reconcile.assert_called_once()
+        catalog.create_table.assert_not_called()
+
+    def test_deduplicates_specs_by_qualified_name(self):
+        schema = _make_schema()
+        spec = TableSpec(("raw", "candles"), schema, ("ts",))
+
+        catalog = _mock_catalog()
+        mock_table = MagicMock()
+        mock_table.metadata_location = "s3://b/ns/t/metadata/current.metadata.json"
+        catalog.load_table.return_value = mock_table
+
+        IcebergStore(catalog, [spec]).create_all()
+
+        assert catalog.create_namespace_if_not_exists.call_count == 1
+        assert catalog.table_exists.call_count == 1

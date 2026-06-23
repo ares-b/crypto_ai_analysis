@@ -6,6 +6,8 @@ from typing import Self
 
 import polars as pl
 from pyiceberg.catalog import load_catalog
+from pyiceberg.table import Table
+from pyiceberg.table.sorting import SortDirection
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from core.helpers.polars import cast_frame_to_arrow
@@ -110,6 +112,9 @@ class IcebergStore(Store):
                 if spec.sort_order is not None:
                     create_kwargs["sort_order"] = spec.sort_order
                 self._catalog.create_table(spec.identifier, **create_kwargs)
+            else:
+                iceberg_table = self._catalog.load_table(spec.identifier)
+                self._reconcile(iceberg_table, spec)
             self._sync_metadata(spec.identifier)
 
     def read(self, table: str, *, columns: Sequence[str] | None = None) -> pl.DataFrame:
@@ -153,6 +158,64 @@ class IcebergStore(Store):
             known = ", ".join(sorted(k for k in self._specs if "." in k))
             raise KeyError(f"unknown table {table!r}; known: {known}")
         return spec
+
+    @staticmethod
+    def _reconcile(table: Table, spec: TableSpec) -> None:
+        if not IcebergStore._partition_spec_matches(table, spec):
+            IcebergStore._apply_partition_spec(table, spec)
+        if not IcebergStore._sort_order_matches(table, spec):
+            IcebergStore._apply_sort_order(table, spec)
+
+    @staticmethod
+    def _partition_spec_matches(table: Table, spec: TableSpec) -> bool:
+        current = table.spec().fields
+        desired = spec.partition_spec.fields if spec.partition_spec is not None else []
+        if len(current) != len(desired):
+            return False
+        table_schema = table.schema()
+        for c, d in zip(current, desired):
+            c_name = table_schema.find_field(c.source_id).name
+            d_name = spec.schema.find_field(d.source_id).name
+            if c_name != d_name or type(c.transform) is not type(d.transform):
+                return False
+        return True
+
+    @staticmethod
+    def _sort_order_matches(table: Table, spec: TableSpec) -> bool:
+        current = table.sort_order().fields
+        desired = spec.sort_order.fields if spec.sort_order is not None else []
+        if len(current) != len(desired):
+            return False
+        table_schema = table.schema()
+        for c, d in zip(current, desired):
+            c_name = table_schema.find_field(c.source_id).name
+            d_name = spec.schema.find_field(d.source_id).name
+            if c_name != d_name or c.direction != d.direction or c.null_order != d.null_order:
+                return False
+        return True
+
+    @staticmethod
+    def _apply_partition_spec(table: Table, spec: TableSpec) -> None:
+        update = table.update_spec()
+        for field in table.spec().fields:
+            update.remove_field(field.name)
+        if spec.partition_spec is not None:
+            for field in spec.partition_spec.fields:
+                col_name = spec.schema.find_field(field.source_id).name
+                update.add_field(col_name, field.transform, field.name)
+        update.commit()
+
+    @staticmethod
+    def _apply_sort_order(table: Table, spec: TableSpec) -> None:
+        update = table.update_sort_order()
+        if spec.sort_order is not None:
+            for field in spec.sort_order.fields:
+                col_name = spec.schema.find_field(field.source_id).name
+                if field.direction == SortDirection.ASC:
+                    update.asc(col_name, field.transform, field.null_order)
+                else:
+                    update.desc(col_name, field.transform, field.null_order)
+        update.commit()
 
     def _sync_metadata(self, identifier: tuple[str, str]) -> None:
         # Garage has no atomic rename; copy to stable path so external tools skip metadata listing.
