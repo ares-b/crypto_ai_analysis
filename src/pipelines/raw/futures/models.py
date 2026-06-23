@@ -3,12 +3,13 @@ from typing import Any, Mapping
 
 from pydantic import ValidationError
 
-from core.models import IcebergRow, StoreRow
+from core.iceberg import IcebergRecord
+from core.models import Record
 
 from .config import FundingRateSettings, FuturesMetricSettings, LongShortSettings
 
 
-class RawFundingRate(StoreRow):
+class RawFundingRate(Record):
     asset: str
     funding_time_ms: int
     funding_rate: float
@@ -28,7 +29,7 @@ class RawFundingRate(StoreRow):
             raise ValueError(f"Invalid Binance funding-rate payload: {data!r}") from error
 
 
-class RawOpenInterest(StoreRow):
+class RawOpenInterest(Record):
     asset: str
     timestamp_ms: int
     open_interest: float
@@ -45,7 +46,7 @@ class RawOpenInterest(StoreRow):
             raise ValueError(f"Invalid Binance open-interest payload: {data!r}") from error
 
 
-class RawBasisPoint(StoreRow):
+class RawBasisPoint(Record):
     asset: str
     timestamp_ms: int
     basis: float | None
@@ -66,7 +67,7 @@ class RawBasisPoint(StoreRow):
             raise ValueError(f"Invalid Binance basis payload: {data!r}") from error
 
 
-class RawPremiumIndexKline(StoreRow):
+class RawPremiumIndexKline(Record):
     asset: str
     open_time_ms: int
     close_time_ms: int
@@ -85,7 +86,13 @@ class RawPremiumIndexKline(StoreRow):
             raise ValueError(f"Invalid Binance premium-index kline payload: {payload!r}") from error
 
 
-class FundingRateRow(IcebergRow, table="raw.funding_rates", identity=("instrument", "counterpart", "funding_time")):
+class FundingRateRow(
+    IcebergRecord,
+    table="raw.funding_rates",
+    identity=("instrument", "counterpart", "funding_time"),
+    partition=("months(funding_time)",),
+    sort=("funding_time",),
+):
     instrument: str
     counterpart: str
     funding_time: datetime
@@ -107,7 +114,13 @@ class FundingRateRow(IcebergRow, table="raw.funding_rates", identity=("instrumen
         )
 
 
-class FuturesMetricRow(IcebergRow, table="raw.futures_metrics", identity=("instrument", "counterpart", "date")):
+class FuturesMetricRow(
+    IcebergRecord,
+    table="raw.futures_metrics",
+    identity=("instrument", "counterpart", "date"),
+    partition=("years(date)",),
+    sort=("date",),
+):
     instrument: str
     counterpart: str
     date: date
@@ -139,7 +152,13 @@ class FuturesMetricRow(IcebergRow, table="raw.futures_metrics", identity=("instr
         )
 
 
-class LongShortRatioRow(IcebergRow, table="raw.long_short_ratio", identity=("instrument", "counterpart", "date")):
+class LongShortRatioRow(
+    IcebergRecord,
+    table="raw.long_short_ratio",
+    identity=("instrument", "counterpart", "date"),
+    partition=("years(date)",),
+    sort=("date",),
+):
     instrument: str
     counterpart: str
     date: date

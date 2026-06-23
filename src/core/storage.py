@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
@@ -20,14 +18,8 @@ class WriteResult:
 
 @runtime_checkable
 class Store(Protocol):
-    """Engine-agnostic table store.
-
-    Tables are referenced by ``"namespace.name"`` (e.g. ``"raw.binance_candles"``).
-    """
-
-    def create_all(self) -> None:
-        """Create every namespace/table declared in the schema registry."""
-        ...
+    # Table names: "namespace.name" (e.g. "raw.binance_candles").
+    def create_all(self) -> None: ...
 
     def read(
         self,
@@ -35,9 +27,7 @@ class Store(Protocol):
         *,
         columns: Sequence[str] | None = None,
     ) -> pl.DataFrame:
-        """Return the full table as a Polars frame (empty frame if absent)."""
+        # Returns empty frame when table does not exist yet.
         ...
 
-    def upsert(self, table: str, frame: pl.DataFrame) -> WriteResult:
-        """Merge rows on the table's identity columns (insert or replace)."""
-        ...
+    def upsert(self, table: str, frame: pl.DataFrame) -> WriteResult: ...

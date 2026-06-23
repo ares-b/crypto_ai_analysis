@@ -3,11 +3,12 @@ from typing import Any, ClassVar, Self, Sequence
 
 from pydantic import ValidationError
 
-from core.models import IcebergRow, StoreRow
+from core.iceberg import IcebergRecord
+from core.models import Record
 from .config import BinanceCandleSettings
 
 
-class RawKline(StoreRow):
+class RawKline(Record):
     EXPECTED_API_RESPONSE_LENGTH: ClassVar[int] = 12
 
     open_time_ms: int
@@ -48,9 +49,11 @@ class RawKline(StoreRow):
 
 
 class BinanceCandleRow(
-    IcebergRow,
+    IcebergRecord,
     table="raw.candles",
     identity=("instrument", "counterpart", "interval", "open_time"),
+    partition=("months(open_time)",),
+    sort=("open_time",),
 ):
     instrument: str
     counterpart: str

@@ -2,7 +2,7 @@ from dagster import ConfigurableResource, EnvVar
 
 from binance.client import Client
 from core.http import HttpClient
-from core.storage.iceberg import IcebergStore
+from core.iceberg import IcebergStore
 from pipelines.raw.cot_positioning.config import COT_POSITIONING_SETTINGS
 from pipelines.raw.etf_flows.config import ETF_FLOWS_SETTINGS
 from pipelines.raw.macro_calendar.config import MACRO_CALENDAR_SETTINGS

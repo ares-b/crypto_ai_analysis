@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from typing import Any
 
-from core.models import IcebergRow, StoreRow
+from core.iceberg import IcebergRecord
+from core.models import Record
 
 
 def _int(value: Any) -> int | None:
@@ -10,7 +11,13 @@ def _int(value: Any) -> int | None:
     return int(float(value))
 
 
-class CotPositioningRow(IcebergRow, table="raw.cot_positioning", identity=("report_date",)):
+class CotPositioningRow(
+    IcebergRecord,
+    table="raw.cot_positioning",
+    identity=("report_date",),
+    partition=("years(report_date)",),
+    sort=("report_date",),
+):
     report_date: date
     noncommercial_long: int | None
     noncommercial_short: int | None

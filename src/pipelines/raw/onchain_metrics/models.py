@@ -3,7 +3,8 @@ from typing import Any, Mapping
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from core.models import IcebergRow, StoreRow
+from core.iceberg import IcebergRecord
+from core.models import Record
 
 MINER_REVENUE_CHART = "miners-revenue"
 TRANSACTION_FEES_CHART = "transaction-fees-usd"
@@ -50,7 +51,13 @@ class RawOnchainMetric(BaseModel):
             raise ValueError(f"Invalid CoinMetrics on-chain metric payload: {data!r}") from error
 
 
-class OnchainMetricRow(IcebergRow, table="raw.onchain_metrics", identity=("instrument", "counterpart", "date")):
+class OnchainMetricRow(
+    IcebergRecord,
+    table="raw.onchain_metrics",
+    identity=("instrument", "counterpart", "date"),
+    partition=("years(date)",),
+    sort=("date", "instrument"),
+):
     instrument: str
     counterpart: str
     date: date
@@ -87,7 +94,13 @@ class OnchainMetricRow(IcebergRow, table="raw.onchain_metrics", identity=("instr
         )
 
 
-class BlockchainChartRow(IcebergRow, table="raw.blockchain_charts", identity=("chart_name", "date")):
+class BlockchainChartRow(
+    IcebergRecord,
+    table="raw.blockchain_charts",
+    identity=("chart_name", "date"),
+    partition=("years(date)",),
+    sort=("chart_name", "date"),
+):
     chart_name: str
     date: date
     value: float | None

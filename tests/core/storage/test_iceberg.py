@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from core.storage.iceberg import IcebergCatalogSettings, IcebergStore
+from core.iceberg.store import IcebergCatalogSettings, IcebergStore
 
 
 
@@ -145,7 +145,7 @@ class TestFromEnv:
 
     def test_calls_load_catalog_with_rest_properties(self, monkeypatch):
         self._setup_env(monkeypatch)
-        with patch("core.storage.iceberg.load_catalog", return_value=_mock_catalog()) as mock_load:
+        with patch("core.iceberg.store.load_catalog", return_value=_mock_catalog()) as mock_load:
             IcebergStore.from_env([])
 
         mock_load.assert_called_once_with(
@@ -159,21 +159,21 @@ class TestFromEnv:
     def test_custom_catalog_name(self, monkeypatch):
         self._setup_env(monkeypatch)
         monkeypatch.setenv("ICEBERG_CATALOG_NAME", "my-catalog")
-        with patch("core.storage.iceberg.load_catalog", return_value=_mock_catalog()) as mock_load:
+        with patch("core.iceberg.store.load_catalog", return_value=_mock_catalog()) as mock_load:
             IcebergStore.from_env([])
         assert mock_load.call_args[0][0] == "my-catalog"
 
     def test_create_all_called(self, monkeypatch):
         self._setup_env(monkeypatch)
         catalog = _mock_catalog()
-        with patch("core.storage.iceberg.load_catalog", return_value=catalog):
+        with patch("core.iceberg.store.load_catalog", return_value=catalog):
             IcebergStore.from_env([])
 
     def test_missing_uri_raises_before_catalog(self, monkeypatch):
         monkeypatch.delenv("ICEBERG_CATALOG_URI", raising=False)
         monkeypatch.setenv("ICEBERG_CATALOG_WAREHOUSE", "wh")
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN", "tok")
-        with patch("core.storage.iceberg.load_catalog") as mock_load:
+        with patch("core.iceberg.store.load_catalog") as mock_load:
             with pytest.raises(ValidationError, match="ICEBERG_CATALOG_URI"):
                 IcebergStore.from_env([])
         mock_load.assert_not_called()
@@ -182,7 +182,7 @@ class TestFromEnv:
         monkeypatch.setenv("ICEBERG_CATALOG_URI", "http://catalog:8181/catalog")
         monkeypatch.delenv("ICEBERG_CATALOG_WAREHOUSE", raising=False)
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN", "tok")
-        with patch("core.storage.iceberg.load_catalog") as mock_load:
+        with patch("core.iceberg.store.load_catalog") as mock_load:
             with pytest.raises(ValidationError, match="ICEBERG_CATALOG_WAREHOUSE"):
                 IcebergStore.from_env([])
         mock_load.assert_not_called()
@@ -191,14 +191,14 @@ class TestFromEnv:
         self._setup_env(monkeypatch)
         monkeypatch.delenv("ICEBERG_CATALOG_TOKEN", raising=False)
         monkeypatch.setenv("ICEBERG_CATALOG_TOKEN_FILE", str(tmp_path / "nonexistent"))
-        with patch("core.storage.iceberg.load_catalog") as mock_load:
+        with patch("core.iceberg.store.load_catalog") as mock_load:
             with pytest.raises(RuntimeError, match="ICEBERG_CATALOG_TOKEN"):
                 IcebergStore.from_env([])
         mock_load.assert_not_called()
 
     def test_token_not_logged(self, monkeypatch, caplog):
         self._setup_env(monkeypatch)
-        with patch("core.storage.iceberg.load_catalog", return_value=_mock_catalog()):
+        with patch("core.iceberg.store.load_catalog", return_value=_mock_catalog()):
             with caplog.at_level(logging.DEBUG):
                 IcebergStore.from_env([])
         assert "test-bearer-token" not in caplog.text

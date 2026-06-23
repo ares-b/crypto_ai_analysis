@@ -8,18 +8,12 @@ import polars as pl
 from pyiceberg.catalog import load_catalog
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ._base import Store, WriteResult
-from ._spec import TableSpec, coerce_to_schema
+from core.helpers.polars import cast_frame_to_arrow
+from core.iceberg.table import TableSpec
+from core.storage import Store, WriteResult
 
 
 class IcebergCatalogSettings(BaseModel):
-    """Iceberg REST catalog connection config.
-
-    Reads from ICEBERG_CATALOG_* env vars by default; fields can be overridden
-    directly for tests or local dev. Raises ValueError on missing required
-    fields so callers get an actionable message, not a raw KeyError.
-    """
-
     model_config = ConfigDict(frozen=True)
 
     uri: str = Field(default_factory=lambda: os.environ.get("ICEBERG_CATALOG_URI", ""))
@@ -50,13 +44,6 @@ class IcebergCatalogSettings(BaseModel):
 
 
 class IcebergStore(Store):
-    """Production Iceberg table store backed by an Iceberg REST catalog.
-
-    Storage credentials are vended by the catalog via remote signing; this client
-    needs no S3 keys. Use from_env() in production and from_config() for explicit
-    catalog properties (integration tests, local dev with a real catalog).
-    """
-
     def __init__(self, catalog: object, specs: Sequence[TableSpec]) -> None:
         self._catalog = catalog
         self._specs: dict[str, TableSpec] = (
@@ -76,12 +63,7 @@ class IcebergStore(Store):
 
     @classmethod
     def from_env(cls, specs: Sequence[TableSpec]) -> Self:
-        """Build from ICEBERG_CATALOG_* env vars and ensure all tables exist.
-
-        Token is read fresh on every call. Dagster creates a new IcebergStore
-        per asset run (via IcebergStoreResource.create()), so the token is
-        always within its ~1h TTL for any single run.
-        """
+        # Token read fresh per call: Dagster creates a new store per asset run, token TTL ~1h.
         settings = IcebergCatalogSettings()
         store = cls.from_config(
             specs,
@@ -98,13 +80,7 @@ class IcebergStore(Store):
 
     @staticmethod
     def _read_token(settings: IcebergCatalogSettings) -> str:
-        """Read the SA bearer token.
-
-        ICEBERG_CATALOG_TOKEN env var takes precedence; use it for local dev or CI
-        where the k8s projected token file is not available.
-        In production, the token is a projected k8s ServiceAccount token
-        auto-rotated by kubelet every ~1h.
-        """
+        # ICEBERG_CATALOG_TOKEN takes precedence for local dev/CI without k8s SA token file.
         static = os.environ.get("ICEBERG_CATALOG_TOKEN")
         if static:
             return static
@@ -128,7 +104,12 @@ class IcebergStore(Store):
                 continue
             seen.add(key)
             if not self._catalog.table_exists(spec.identifier):
-                self._catalog.create_table(spec.identifier, schema=spec.schema)
+                create_kwargs: dict[str, object] = {"schema": spec.schema}
+                if spec.partition_spec is not None:
+                    create_kwargs["partition_spec"] = spec.partition_spec
+                if spec.sort_order is not None:
+                    create_kwargs["sort_order"] = spec.sort_order
+                self._catalog.create_table(spec.identifier, **create_kwargs)
             self._sync_metadata(spec.identifier)
 
     def read(self, table: str, *, columns: Sequence[str] | None = None) -> pl.DataFrame:
@@ -154,7 +135,7 @@ class IcebergStore(Store):
 
         spec = self._resolve(table)
         iceberg_table = self._catalog.load_table(spec.identifier)
-        arrow = coerce_to_schema(frame, iceberg_table.schema().as_arrow())
+        arrow = cast_frame_to_arrow(frame, iceberg_table.schema().as_arrow())
 
         started_at = perf_counter()
         result = iceberg_table.upsert(arrow, join_cols=list(spec.identity_columns))
@@ -174,11 +155,7 @@ class IcebergStore(Store):
         return spec
 
     def _sync_metadata(self, identifier: tuple[str, str]) -> None:
-        """Copy versioned metadata to a stable current.metadata.json path.
-
-        Garage has no atomic rename. This stable path lets external tools
-        discover the current snapshot without listing the metadata directory.
-        """
+        # Garage has no atomic rename; copy to stable path so external tools skip metadata listing.
         iceberg_table = self._catalog.load_table(identifier)
         current = iceberg_table.metadata_location
         stable = self._stable_metadata_path(current)
