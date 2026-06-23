@@ -7,7 +7,7 @@ class BinanceCandleSettings(BaseModel):
     instrument: str = "BTC"
     counterpart: str = "USDT"
     interval: str
-    table_name: str = "raw.binance_candles"
+    table_name: str = "raw.candles"
 
     @property
     def symbol(self) -> str:
