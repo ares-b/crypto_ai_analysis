@@ -23,8 +23,7 @@ class MarketNewsItemRow(
     IcebergRecord,
     table="raw.market_news_items",
     identity=("content_hash",),
-    partition=("months(source_updated_at)",),
-    sort=("source_updated_at",),
+    sort=("published_at",),
 ):
     source_url: str
     content_hash: str

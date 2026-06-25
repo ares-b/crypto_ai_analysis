@@ -9,7 +9,7 @@ from core.storage import Store
 from pipelines import MetricValue
 
 from .config import MarketNewsSettings
-from .models import MarketNewsItemRow, RawNewsItem
+from .models import MarketNewsItemRow, RawNewsItem, content_hash
 
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 
@@ -79,11 +79,11 @@ def _parse_atom(root: ET.Element) -> list[RawNewsItem]:
     return items
 
 
-def _stored_source_urls(store: Store, table_name: str) -> set[str]:
-    frame = store.read(table_name, columns=["source_url"])
+def _stored_content_hashes(store: Store, table_name: str) -> set[str]:
+    frame = store.read(table_name, columns=["content_hash"])
     if frame.is_empty():
         return set()
-    return set(frame.get_column("source_url").to_list())
+    return set(frame.get_column("content_hash").to_list())
 
 
 def fetch_market_news(
@@ -91,7 +91,7 @@ def fetch_market_news(
     logger: logging.Logger,
     client: HttpClient,
     settings: MarketNewsSettings,
-    known_urls: set[str],
+    known_hashes: set[str],
 ) -> tuple[list[MarketNewsItemRow], int]:
     fetched_at = datetime.now(UTC)
     rows: list[MarketNewsItemRow] = []
@@ -104,9 +104,12 @@ def fetch_market_news(
             continue
         for item in _parse_feed(xml_text):
             items_seen += 1
-            if item.url in known_urls:
+            # Hash computed from feed metadata only, before the costly article-body fetch,
+            # so reposts with edited title/summary register as new content.
+            item_hash = content_hash(item.url, item.title, item.summary)
+            if item_hash in known_hashes:
                 continue
-            known_urls.add(item.url)
+            known_hashes.add(item_hash)
             content_raw: str | None = None
             try:
                 content_raw = client.get_text(item.url)
@@ -133,12 +136,12 @@ def run_market_news(
     settings: MarketNewsSettings,
     client: HttpClient,
 ) -> dict[str, MetricValue]:
-    known_urls = _stored_source_urls(store, settings.table_name)
+    known_hashes = _stored_content_hashes(store, settings.table_name)
     rows, items_seen = fetch_market_news(
         logger=logger,
         client=client,
         settings=settings,
-        known_urls=known_urls,
+        known_hashes=known_hashes,
     )
     rows_affected = 0
     if rows:

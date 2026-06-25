@@ -9,7 +9,6 @@ class SentimentRow(
     IcebergRecord,
     table="raw.sentiment_index",
     identity=("date",),
-    partition=("years(date)",),
     sort=("date",),
 ):
     date: date
@@ -42,7 +41,6 @@ class DeribitDvolRow(
     IcebergRecord,
     table="raw.deribit_dvol",
     identity=("date",),
-    partition=("years(date)",),
     sort=("date",),
 ):
     date: date
@@ -61,7 +59,6 @@ class DeribitPutCallRow(
     IcebergRecord,
     table="raw.deribit_put_call",
     identity=("date",),
-    partition=("years(date)",),
     sort=("date",),
 ):
     date: date

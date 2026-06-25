@@ -6,6 +6,7 @@ from typing import Self
 
 import polars as pl
 from pyiceberg.catalog import load_catalog
+from pyiceberg.exceptions import NoSuchTableError
 from pyiceberg.table import Table
 from pyiceberg.table.sorting import SortDirection
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -48,9 +49,7 @@ class IcebergCatalogSettings(BaseModel):
 class IcebergStore(Store):
     def __init__(self, catalog: object, specs: Sequence[TableSpec]) -> None:
         self._catalog = catalog
-        self._specs: dict[str, TableSpec] = (
-            {f"{s.namespace}.{s.name}": s for s in specs} | {s.name: s for s in specs}
-        )
+        self._specs: dict[str, TableSpec] = {f"{s.namespace}.{s.name}": s for s in specs}
 
     @classmethod
     def from_config(
@@ -60,7 +59,6 @@ class IcebergStore(Store):
         name: str,
         properties: dict[str, str],
     ) -> Self:
-        cls._set_s3_checksum_defaults()
         return cls(load_catalog(name, **properties), specs)
 
     @classmethod
@@ -118,8 +116,6 @@ class IcebergStore(Store):
             self._sync_metadata(spec.identifier)
 
     def read(self, table: str, *, columns: Sequence[str] | None = None) -> pl.DataFrame:
-        from pyiceberg.exceptions import NoSuchTableError
-
         spec = self._resolve(table)
         try:
             iceberg_table = self._catalog.load_table(spec.identifier)
@@ -218,7 +214,7 @@ class IcebergStore(Store):
         update.commit()
 
     def _sync_metadata(self, identifier: tuple[str, str]) -> None:
-        # Garage has no atomic rename; copy to stable path so external tools skip metadata listing.
+        # S3 object stores have no atomic rename; copy to stable path so external tools skip metadata listing.
         iceberg_table = self._catalog.load_table(identifier)
         current = iceberg_table.metadata_location
         stable = self._stable_metadata_path(current)
@@ -237,9 +233,3 @@ class IcebergStore(Store):
         if not directory:
             raise ValueError(f"invalid Iceberg metadata location: {metadata_location!r}")
         return f"{directory}/current.metadata.json"
-
-    @staticmethod
-    def _set_s3_checksum_defaults() -> None:
-        # Garage returns checksum headers that break botocore range-read validation.
-        os.environ.setdefault("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
-        os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")

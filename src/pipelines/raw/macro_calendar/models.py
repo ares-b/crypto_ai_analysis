@@ -8,7 +8,7 @@ from core.models import Record
 class MacroCalendarRow(
     IcebergRecord,
     table="raw.macro_calendar",
-    identity=("event_id",),
+    identity=("event_id", "event_time_utc"),
     partition=("years(event_time_utc)",),
     sort=("event_time_utc",),
 ):

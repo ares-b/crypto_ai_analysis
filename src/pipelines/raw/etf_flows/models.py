@@ -15,7 +15,6 @@ class EtfFlowRow(
     IcebergRecord,
     table="raw.etf_flows",
     identity=("date",),
-    partition=("years(date)",),
     sort=("date",),
 ):
     date: date

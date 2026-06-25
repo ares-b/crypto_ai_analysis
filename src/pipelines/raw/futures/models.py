@@ -91,7 +91,7 @@ class FundingRateRow(
     table="raw.funding_rates",
     identity=("instrument", "counterpart", "funding_time"),
     partition=("months(funding_time)",),
-    sort=("funding_time",),
+    sort=("funding_time", "instrument"),
 ):
     instrument: str
     counterpart: str

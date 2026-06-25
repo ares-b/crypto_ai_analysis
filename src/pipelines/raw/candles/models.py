@@ -52,8 +52,8 @@ class BinanceCandleRow(
     IcebergRecord,
     table="raw.candles",
     identity=("instrument", "counterpart", "interval", "open_time"),
-    partition=("months(open_time)",),
-    sort=("open_time",),
+    partition=("years(open_time)",),
+    sort=("open_time", "instrument"),
 ):
     instrument: str
     counterpart: str

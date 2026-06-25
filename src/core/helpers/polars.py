@@ -7,6 +7,10 @@ def cast_frame_to_arrow(frame: pl.DataFrame, schema: pa.Schema) -> pa.Table:
     if arrow_table.schema.equals(schema, check_metadata=False):
         return arrow_table
 
+    extra = set(arrow_table.schema.names) - set(schema.names)
+    if extra:
+        raise ValueError(f"frame has columns absent from Iceberg schema: {sorted(extra)}")
+
     columns: list[pa.ChunkedArray] = []
     for field in schema:
         if field.name not in arrow_table.schema.names:

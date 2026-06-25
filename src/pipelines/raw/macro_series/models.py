@@ -9,7 +9,6 @@ class MacroSeriesRow(
     IcebergRecord,
     table="raw.macro_series",
     identity=("series_id", "date"),
-    partition=("years(date)",),
     sort=("series_id", "date"),
 ):
     series_id: str

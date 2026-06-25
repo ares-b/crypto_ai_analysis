@@ -7,7 +7,7 @@ from time import perf_counter
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 
-from core.helpers import utc_now_ms
+from core.helpers import isoformat_ms, utc_now_ms
 from core.storage import Store
 from pipelines import MetricValue
 
@@ -121,8 +121,6 @@ def run_binance_candles(
         "binance_requests": result.request_count,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "latest_source_close_time": (
-            datetime.fromtimestamp(latest_close_ms / 1000).isoformat()
-            if latest_close_ms is not None
-            else None
+            isoformat_ms(latest_close_ms) if latest_close_ms is not None else None
         ),
     }

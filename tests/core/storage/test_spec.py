@@ -35,6 +35,13 @@ def test_coerce_missing_column_raises():
         coerce_to_schema(frame, schema)
 
 
+def test_coerce_extra_column_raises():
+    schema = pa.schema([pa.field("x", pa.int64())])
+    frame = pl.DataFrame({"x": [1], "extra": ["drift"]})
+    with pytest.raises(ValueError, match="absent from Iceberg schema"):
+        coerce_to_schema(frame, schema)
+
+
 def test_coerce_preserves_values():
     schema = pa.schema([pa.field("name", pa.utf8()), pa.field("val", pa.float64())])
     frame = pl.DataFrame({"name": ["btc"], "val": [65000.0]})

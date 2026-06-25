@@ -48,7 +48,6 @@ class MarketMetricRow(
     IcebergRecord,
     table="raw.market_metrics",
     identity=("date",),
-    partition=("years(date)",),
     sort=("date",),
 ):
     date: date
@@ -76,7 +75,6 @@ class StablecoinSupplyRow(
     IcebergRecord,
     table="raw.stablecoin_supply",
     identity=("date",),
-    partition=("years(date)",),
     sort=("date",),
 ):
     date: date

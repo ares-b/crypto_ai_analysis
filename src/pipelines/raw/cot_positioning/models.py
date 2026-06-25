@@ -15,7 +15,6 @@ class CotPositioningRow(
     IcebergRecord,
     table="raw.cot_positioning",
     identity=("report_date",),
-    partition=("years(report_date)",),
     sort=("report_date",),
 ):
     report_date: date

@@ -1,3 +1,4 @@
+import random
 import time
 from typing import Any, Self
 
@@ -6,6 +7,10 @@ import httpx
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 2.0
+
+
+def _backoff(attempt: int) -> float:
+    return random.uniform(0, _BACKOFF_BASE**attempt)
 
 
 class HttpError(Exception):
@@ -47,11 +52,11 @@ class HttpClient:
             except httpx.TransportError as exc:
                 last_exc = exc
                 if not is_last:
-                    time.sleep(_BACKOFF_BASE**attempt)
+                    time.sleep(_backoff(attempt))
                 continue
 
             if response.status_code in _RETRYABLE_STATUSES and not is_last:
-                wait = float(response.headers.get("Retry-After", _BACKOFF_BASE**attempt))
+                wait = float(response.headers.get("Retry-After", _backoff(attempt)))
                 time.sleep(wait)
                 continue
 

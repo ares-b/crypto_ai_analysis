@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 from core.http import HttpError
 from pipelines.raw.market_news.config import FeedSpec, MarketNewsSettings
+from pipelines.raw.market_news.models import content_hash
 from pipelines.raw.market_news.run import _parse_feed, fetch_market_news, run_market_news
 from tests.conftest import MemoryStore
 
@@ -80,20 +81,24 @@ class TestFetchMarketNews:
         client.get_text.side_effect = [_RSS_XML, "content1", "content2"]
 
         rows, items_seen = fetch_market_news(
-            logger=logger, client=client, settings=SETTINGS, known_urls=set()
+            logger=logger, client=client, settings=SETTINGS, known_hashes=set()
         )
 
         assert items_seen == 2
         assert len(rows) == 2
         assert rows[0].content_raw == "content1"
 
-    def test_known_urls_skipped(self, logger):
-        known = {"https://example.com/article1"}
+    def test_known_hashes_skipped(self, logger):
+        known = {
+            content_hash(
+                "https://example.com/article1", "BTC hits $100k", "Bitcoin milestone reached"
+            )
+        }
         client = MagicMock()
         client.get_text.side_effect = [_RSS_XML, "content2"]
 
         rows, items_seen = fetch_market_news(
-            logger=logger, client=client, settings=SETTINGS, known_urls=known
+            logger=logger, client=client, settings=SETTINGS, known_hashes=known
         )
 
         assert items_seen == 2
@@ -105,7 +110,7 @@ class TestFetchMarketNews:
         client.get_text.side_effect = HttpError(503, "test")
 
         rows, items_seen = fetch_market_news(
-            logger=logger, client=client, settings=SETTINGS, known_urls=set()
+            logger=logger, client=client, settings=SETTINGS, known_hashes=set()
         )
 
         assert rows == []
@@ -120,7 +125,7 @@ class TestFetchMarketNews:
         ]
 
         rows, items_seen = fetch_market_news(
-            logger=logger, client=client, settings=SETTINGS, known_urls=set()
+            logger=logger, client=client, settings=SETTINGS, known_hashes=set()
         )
 
         assert len(rows) == 2
@@ -210,8 +215,8 @@ class TestParseAtomEdgeCases:
         assert items[0].published_at is not None
 
 
-class TestStoredSourceUrls:
-    def test_deduplicates_known_urls_across_runs(self, logger):
+class TestContentHashDedup:
+    def test_deduplicates_known_content_across_runs(self, logger):
         client = MagicMock()
         client.get_text.side_effect = [_RSS_XML, "c1", "c2"]
         store = MemoryStore()
@@ -223,3 +228,17 @@ class TestStoredSourceUrls:
 
         assert metrics["items_written"] == 0
         assert metrics["items_seen"] == 2
+
+    def test_edited_content_at_same_url_reingested(self, logger):
+        edited_xml = _RSS_XML.replace("Bitcoin milestone reached", "Bitcoin milestone, updated")
+        client = MagicMock()
+        client.get_text.side_effect = [_RSS_XML, "c1", "c2"]
+        store = MemoryStore()
+
+        run_market_news(store=store, logger=logger, run_date=RUN_DATE, settings=SETTINGS, client=client)
+
+        # Same urls, but article1 summary changed -> new content_hash -> re-fetched.
+        client.get_text.side_effect = [edited_xml, "c1-edited"]
+        metrics = run_market_news(store=store, logger=logger, run_date=RUN_DATE, settings=SETTINGS, client=client)
+
+        assert metrics["items_written"] == 1
