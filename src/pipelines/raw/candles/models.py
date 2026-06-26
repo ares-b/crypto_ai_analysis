@@ -8,7 +8,7 @@ from core.models import Record
 from .config import BinanceCandleSettings
 
 
-class RawKline(Record):
+class RawBinanceCandle(Record):
     EXPECTED_API_RESPONSE_LENGTH: ClassVar[int] = 12
 
     open_time_ms: int
@@ -79,7 +79,7 @@ class BinanceCandleRow(
         return int(self.close_time.timestamp() * 1000)
 
     @classmethod
-    def from_kline(cls, *, settings: BinanceCandleSettings, kline: RawKline) -> Self:
+    def from_kline(cls, *, settings: BinanceCandleSettings, kline: RawBinanceCandle) -> Self:
         return cls(
             instrument=settings.instrument,
             counterpart=settings.counterpart,

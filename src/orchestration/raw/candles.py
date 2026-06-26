@@ -10,13 +10,21 @@ from dagster import (
     define_asset_job,
 )
 
-from pipelines.raw.candles.config import DAILY_CANDLES, WEEKLY_CANDLES, BinanceCandleSettings
+from pipelines.raw.candles.config import (
+    DAILY_CANDLES,
+    FOUR_HOUR_CANDLES,
+    HOURLY_CANDLES,
+    WEEKLY_CANDLES,
+    BinanceCandleSettings,
+)
 from pipelines.raw.candles.run import run_binance_candles
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
 _BINANCE_LAUNCH_DATE = "2017-08-17"
 
 daily_partitions = DailyPartitionsDefinition(start_date=_BINANCE_LAUNCH_DATE, timezone="UTC")
+four_hour_partitions = DailyPartitionsDefinition(start_date=_BINANCE_LAUNCH_DATE, timezone="UTC")
+hourly_partitions = DailyPartitionsDefinition(start_date=_BINANCE_LAUNCH_DATE, timezone="UTC")
 weekly_partitions = WeeklyPartitionsDefinition(
     start_date=_BINANCE_LAUNCH_DATE, timezone="UTC", day_offset=0
 )
@@ -51,6 +59,24 @@ def binance_candles_daily(
     return _run(context, iceberg_store, binance_client, settings=DAILY_CANDLES, window_delta=timedelta(days=1))
 
 
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=four_hour_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+def binance_candles_4h(
+    context: AssetExecutionContext,
+    iceberg_store: IcebergStoreResource,
+    binance_client: BinanceClientResource,
+) -> MaterializeResult:
+    return _run(context, iceberg_store, binance_client, settings=FOUR_HOUR_CANDLES, window_delta=timedelta(days=1))
+
+
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=hourly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+def binance_candles_1h(
+    context: AssetExecutionContext,
+    iceberg_store: IcebergStoreResource,
+    binance_client: BinanceClientResource,
+) -> MaterializeResult:
+    return _run(context, iceberg_store, binance_client, settings=HOURLY_CANDLES, window_delta=timedelta(days=1))
+
+
 @asset(key_prefix=["crypto-ai-analysis"], partitions_def=weekly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
 def binance_candles_weekly(
     context: AssetExecutionContext,
@@ -64,11 +90,33 @@ def binance_candles_weekly(
 raw_daily_candles_job = define_asset_job("raw_daily_candles_job", selection=[binance_candles_daily])
 raw_daily_candles_schedule = build_schedule_from_partitioned_job(raw_daily_candles_job, hour_of_day=1)
 
+# 01:00 UTC - prior day's intraday bars are all closed by midnight UTC
+raw_candles_4h_job = define_asset_job("raw_candles_4h_job", selection=[binance_candles_4h])
+raw_candles_4h_schedule = build_schedule_from_partitioned_job(raw_candles_4h_job, hour_of_day=1)
+
+raw_candles_1h_job = define_asset_job("raw_candles_1h_job", selection=[binance_candles_1h])
+raw_candles_1h_schedule = build_schedule_from_partitioned_job(raw_candles_1h_job, hour_of_day=1)
+
 # Monday 01:00 UTC - weekly candle closes Sunday midnight UTC
 raw_weekly_candles_job = define_asset_job("raw_weekly_candles_job", selection=[binance_candles_weekly])
 raw_weekly_candles_schedule = build_schedule_from_partitioned_job(raw_weekly_candles_job, hour_of_day=1, day_of_week=0)
 
-JOBS = [raw_daily_candles_job, raw_weekly_candles_job]
-SCHEDULES = [raw_daily_candles_schedule, raw_weekly_candles_schedule]
+JOBS = [
+    raw_daily_candles_job,
+    raw_candles_4h_job,
+    raw_candles_1h_job,
+    raw_weekly_candles_job,
+]
+SCHEDULES = [
+    raw_daily_candles_schedule,
+    raw_candles_4h_schedule,
+    raw_candles_1h_schedule,
+    raw_weekly_candles_schedule,
+]
 
-ASSETS = [binance_candles_daily, binance_candles_weekly]
+ASSETS = [
+    binance_candles_daily,
+    binance_candles_4h,
+    binance_candles_1h,
+    binance_candles_weekly,
+]

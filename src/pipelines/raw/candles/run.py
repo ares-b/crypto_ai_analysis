@@ -12,7 +12,7 @@ from core.storage import Store
 from pipelines import MetricValue
 
 from .config import BinanceCandleSettings
-from .models import BinanceCandleRow, RawKline
+from .models import BinanceCandleRow, RawBinanceCandle
 
 _MAX_KLINES_LIMIT = 1000
 _MAX_RATE_LIMIT_RETRIES = 3
@@ -37,7 +37,7 @@ def fetch_candles(
     start_ms = int(window_start.timestamp() * 1000)
     effective_end_ms = min(int(window_end.timestamp() * 1000), now_ms - 1)
     next_start_ms = start_ms
-    klines: list[RawKline] = []
+    klines: list[RawBinanceCandle] = []
     request_count = 0
 
     while next_start_ms <= effective_end_ms:
@@ -67,7 +67,7 @@ def fetch_candles(
         if not batch:
             break
 
-        parsed = [RawKline.from_api_response(item) for item in batch]
+        parsed = [RawBinanceCandle.from_api_response(item) for item in batch]
         klines.extend(parsed)
         next_start_ms = parsed[-1].open_time_ms + 1
         if len(batch) < _MAX_KLINES_LIMIT:

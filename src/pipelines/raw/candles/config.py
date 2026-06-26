@@ -16,3 +16,5 @@ class BinanceCandleSettings(BaseModel):
 
 DAILY_CANDLES = BinanceCandleSettings(interval="1d")
 WEEKLY_CANDLES = BinanceCandleSettings(interval="1w")
+FOUR_HOUR_CANDLES = BinanceCandleSettings(interval="4h")
+HOURLY_CANDLES = BinanceCandleSettings(interval="1h")
