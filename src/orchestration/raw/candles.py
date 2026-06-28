@@ -19,6 +19,7 @@ from pipelines.raw.candles.config import (
 )
 from pipelines.raw.candles.run import run_binance_candles
 from orchestration.partitions import DEPLOY_DATE, DEPLOY_WEEK_START
+from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_A
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
 daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
@@ -49,7 +50,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
 def binance_candles_daily(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -58,7 +59,7 @@ def binance_candles_daily(
     return _run(context, iceberg_store, binance_client, settings=DAILY_CANDLES, window_delta=timedelta(days=1))
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=four_hour_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=four_hour_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
 def binance_candles_4h(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -67,7 +68,7 @@ def binance_candles_4h(
     return _run(context, iceberg_store, binance_client, settings=FOUR_HOUR_CANDLES, window_delta=timedelta(days=1))
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=hourly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=hourly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
 def binance_candles_1h(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -76,7 +77,7 @@ def binance_candles_1h(
     return _run(context, iceberg_store, binance_client, settings=HOURLY_CANDLES, window_delta=timedelta(days=1))
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=weekly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=weekly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
 def binance_candles_weekly(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -86,18 +87,18 @@ def binance_candles_weekly(
 
 
 # 01:00 UTC - daily candle closes at midnight UTC
-raw_daily_candles_job = define_asset_job("raw_daily_candles_job", selection=[binance_candles_daily])
+raw_daily_candles_job = define_asset_job("raw_daily_candles_job", selection=[binance_candles_daily], tags=TIER_A)
 raw_daily_candles_schedule = build_schedule_from_partitioned_job(raw_daily_candles_job, hour_of_day=1)
 
 # 01:00 UTC - prior day's intraday bars are all closed by midnight UTC
-raw_candles_4h_job = define_asset_job("raw_candles_4h_job", selection=[binance_candles_4h])
+raw_candles_4h_job = define_asset_job("raw_candles_4h_job", selection=[binance_candles_4h], tags=TIER_A)
 raw_candles_4h_schedule = build_schedule_from_partitioned_job(raw_candles_4h_job, hour_of_day=1)
 
-raw_candles_1h_job = define_asset_job("raw_candles_1h_job", selection=[binance_candles_1h])
+raw_candles_1h_job = define_asset_job("raw_candles_1h_job", selection=[binance_candles_1h], tags=TIER_A)
 raw_candles_1h_schedule = build_schedule_from_partitioned_job(raw_candles_1h_job, hour_of_day=1)
 
 # Monday 01:00 UTC - weekly candle closes Sunday midnight UTC
-raw_weekly_candles_job = define_asset_job("raw_weekly_candles_job", selection=[binance_candles_weekly])
+raw_weekly_candles_job = define_asset_job("raw_weekly_candles_job", selection=[binance_candles_weekly], tags=TIER_A)
 raw_weekly_candles_schedule = build_schedule_from_partitioned_job(raw_weekly_candles_job, hour_of_day=1, day_of_week=0)
 
 JOBS = [

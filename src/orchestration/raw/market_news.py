@@ -7,10 +7,11 @@ from orchestration.partitions import DEPLOY_DATE
 daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.market_news.config import MARKET_NEWS_SETTINGS
 from pipelines.raw.market_news.run import run_market_news
+from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_B
 from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "rss"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "rss"}, retry_policy=DEFAULT_RETRY_POLICY)
 def raw_market_news(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -26,7 +27,7 @@ def raw_market_news(
     )
     return MaterializeResult(metadata=metrics)
 # 04:00 UTC - no time constraint; avoid peak hours
-raw_market_news_job = define_asset_job("raw_market_news_job", selection=[raw_market_news])
+raw_market_news_job = define_asset_job("raw_market_news_job", selection=[raw_market_news], tags=TIER_B)
 raw_market_news_schedule = build_schedule_from_partitioned_job(raw_market_news_job, hour_of_day=4)
 
 JOBS = [raw_market_news_job]

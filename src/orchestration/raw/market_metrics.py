@@ -8,6 +8,7 @@ _dominance_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezo
 _stablecoin_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
 from pipelines.raw.market_metrics.run import run_market_metrics, run_stablecoin_supply
+from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_B, TIER_C
 from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
@@ -29,7 +30,7 @@ def _run(
     return MaterializeResult(metadata=metrics)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_dominance_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_dominance_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"}, retry_policy=DEFAULT_RETRY_POLICY)
 def raw_market_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -38,7 +39,7 @@ def raw_market_metrics(
     return _run(context, iceberg_store, coingecko_client, fn=run_market_metrics)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_stablecoin_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_stablecoin_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"}, retry_policy=DEFAULT_RETRY_POLICY)
 def raw_stablecoin_supply(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -46,9 +47,9 @@ def raw_stablecoin_supply(
 ) -> MaterializeResult:
     return _run(context, iceberg_store, coingecko_client, fn=run_stablecoin_supply)
 # 01:00 UTC - crypto data closes at midnight UTC
-raw_market_metrics_job = define_asset_job("raw_market_metrics_job", selection=[raw_market_metrics])
+raw_market_metrics_job = define_asset_job("raw_market_metrics_job", selection=[raw_market_metrics], tags=TIER_B)
 raw_market_metrics_schedule = build_schedule_from_partitioned_job(raw_market_metrics_job, hour_of_day=1)
-raw_stablecoin_supply_job = define_asset_job("raw_stablecoin_supply_job", selection=[raw_stablecoin_supply])
+raw_stablecoin_supply_job = define_asset_job("raw_stablecoin_supply_job", selection=[raw_stablecoin_supply], tags=TIER_C)
 raw_stablecoin_supply_schedule = build_schedule_from_partitioned_job(raw_stablecoin_supply_job, hour_of_day=1)
 
 JOBS = [raw_market_metrics_job, raw_stablecoin_supply_job]

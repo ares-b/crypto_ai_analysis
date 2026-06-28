@@ -7,10 +7,11 @@ from orchestration.partitions import DEPLOY_DATE
 daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.sentiment_index.config import SENTIMENT_SETTINGS
 from pipelines.raw.sentiment_index.run import run_sentiment_index
+from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_C
 from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "alternative.me"})
+@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "alternative.me"}, retry_policy=DEFAULT_RETRY_POLICY)
 def raw_sentiment_index(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
@@ -28,7 +29,7 @@ def raw_sentiment_index(
     )
     return MaterializeResult(metadata=metrics)
 # 01:00 UTC - Alternative.me updates around midnight UTC
-raw_sentiment_index_job = define_asset_job("raw_sentiment_index_job", selection=[raw_sentiment_index])
+raw_sentiment_index_job = define_asset_job("raw_sentiment_index_job", selection=[raw_sentiment_index], tags=TIER_C)
 raw_sentiment_index_schedule = build_schedule_from_partitioned_job(raw_sentiment_index_job, hour_of_day=1)
 
 JOBS = [raw_sentiment_index_job]
