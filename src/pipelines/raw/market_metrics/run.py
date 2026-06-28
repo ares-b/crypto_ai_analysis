@@ -5,6 +5,7 @@ from time import perf_counter
 from core.http import HttpClient, HttpError
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import MarketMetricSettings
 from .models import (
@@ -125,8 +126,12 @@ def run_market_metrics(
     started_at = perf_counter()
     row, request_count = fetch_market_metric_row(logger=logger, client=client, run_date=run_date)
     rows_affected = 0
+    quality_metrics: dict[str, MetricValue] = {}
     if row is not None:
-        rows_affected = store.upsert(settings.table_name, MarketMetricRow.to_frame([row])).rows_affected
+        frame = MarketMetricRow.to_frame([row])
+        report = check_frame(frame, MarketMetricRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        rows_affected = store.upsert(settings.table_name, frame).rows_affected
 
     btc_dominance_pct = row.btc_dominance_pct if row is not None else None
     logger.info(
@@ -138,6 +143,7 @@ def run_market_metrics(
         "rows_affected": rows_affected,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "btc_dominance_pct": btc_dominance_pct,
+        **quality_metrics,
     }
 
 
@@ -152,10 +158,15 @@ def run_stablecoin_supply(
     started_at = perf_counter()
     row = fetch_stablecoin_supply(logger=logger, client=client, run_date=run_date)
     rows_affected = 0
+    quality_metrics: dict[str, MetricValue] = {}
     if row is not None:
-        rows_affected = store.upsert(settings.stablecoin_table, StablecoinSupplyRow.to_frame([row])).rows_affected
+        frame = StablecoinSupplyRow.to_frame([row])
+        report = check_frame(frame, StablecoinSupplyRow.quality_checks(), logger=logger, table=settings.stablecoin_table)
+        quality_metrics = report.to_metrics()
+        rows_affected = store.upsert(settings.stablecoin_table, frame).rows_affected
     logger.info(f"[stablecoin_supply] date={run_date.isoformat()} rows_affected={rows_affected}")
     return {
         "rows_affected": rows_affected,
         "duration_seconds": round(perf_counter() - started_at, 3),
+        **quality_metrics,
     }

@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
 from typing import Any, ClassVar, Self, Sequence
 
+import polars as pl
 from pydantic import ValidationError
 
 from core.iceberg import IcebergRecord
 from core.models import Record
+from core.quality import Check, expression, from_spec, in_range
 from .config import BinanceCandleSettings
 
 
@@ -69,6 +71,16 @@ class BinanceCandleRow(
     number_of_trades: int
     taker_buy_base_asset_volume: float
     taker_buy_quote_asset_volume: float
+
+    @classmethod
+    def quality_checks(cls) -> list[Check]:
+        return from_spec(cls, extra=[
+            expression("high>=low", pl.col("high") >= pl.col("low")),
+            expression("high_bounds_oc", (pl.col("high") >= pl.col("open")) & (pl.col("high") >= pl.col("close"))),
+            expression("low_bounds_oc", (pl.col("low") <= pl.col("open")) & (pl.col("low") <= pl.col("close"))),
+            expression("positive_prices", (pl.col("open") > 0) & (pl.col("close") > 0)),
+            in_range("volume", 0, None),
+        ])
 
     @staticmethod
     def _ms_to_datetime(ms: int) -> datetime:

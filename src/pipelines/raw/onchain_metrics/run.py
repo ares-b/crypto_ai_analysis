@@ -5,6 +5,7 @@ from time import perf_counter
 from core.http import HttpClient, HttpError
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import OnchainSettings
 from .models import (
@@ -101,15 +102,23 @@ def run_onchain_metrics(
 
     rows_affected = 0
     latest_source_date: date | None = None
+    quality_metrics: dict[str, MetricValue] = {}
     if rows:
-        rows_affected = store.upsert(settings.table_name, OnchainMetricRow.to_frame(rows)).rows_affected
+        frame = OnchainMetricRow.to_frame(rows)
+        report = check_frame(frame, OnchainMetricRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        rows_affected = store.upsert(settings.table_name, frame).rows_affected
         latest_source_date = max(row.date for row in rows)
 
     blockchain_rows = _fetch_blockchain_rows(
         blockchain_client, logger=logger, metric_date=run_date, source_updated_at=source_updated_at
     )
     if blockchain_rows:
-        store.upsert(settings.blockchain_charts_table, BlockchainChartRow.to_frame(blockchain_rows))
+        chart_frame = BlockchainChartRow.to_frame(blockchain_rows)
+        chart_report = check_frame(chart_frame, BlockchainChartRow.quality_checks(), logger=logger,
+                                   table=settings.blockchain_charts_table)
+        quality_metrics |= chart_report.to_metrics(prefix="quality_charts")
+        store.upsert(settings.blockchain_charts_table, chart_frame)
 
     logger.info(
         f"[onchain_metrics] {settings.instrument}/{settings.counterpart}: date={run_date.isoformat()} "
@@ -121,4 +130,5 @@ def run_onchain_metrics(
         "blockchain_requests": len(blockchain_rows),
         "duration_seconds": round(perf_counter() - started_at, 3),
         "latest_source_date": latest_source_date.isoformat() if latest_source_date is not None else None,
+        **quality_metrics,
     }

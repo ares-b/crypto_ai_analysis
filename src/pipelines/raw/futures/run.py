@@ -9,6 +9,7 @@ from binance.exceptions import BinanceAPIException
 from core.helpers import utc_now_ms
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import FundingRateSettings, FuturesMetricSettings, LongShortSettings
 from .models import (
@@ -201,8 +202,12 @@ def run_funding_rates(
 
     write_result = None
     latest_funding_ms: int | None = None
+    quality_metrics: dict[str, MetricValue] = {}
     if rows:
-        write_result = store.upsert(settings.table_name, FundingRateRow.to_frame(rows))
+        frame = FundingRateRow.to_frame(rows)
+        report = check_frame(frame, FundingRateRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        write_result = store.upsert(settings.table_name, frame)
         latest_funding_ms = max(row.funding_time_ms for row in rows)
 
     logger.info(
@@ -220,6 +225,7 @@ def run_funding_rates(
             if latest_funding_ms is not None
             else None
         ),
+        **quality_metrics,
     }
 
 
@@ -243,8 +249,12 @@ def run_futures_metrics(
     )
 
     write_result = None
+    quality_metrics: dict[str, MetricValue] = {}
     if row is not None:
-        write_result = store.upsert(settings.table_name, FuturesMetricRow.to_frame([row]))
+        frame = FuturesMetricRow.to_frame([row])
+        report = check_frame(frame, FuturesMetricRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        write_result = store.upsert(settings.table_name, frame)
 
     logger.info(
         f"[futures_metrics] {settings.symbol}: "
@@ -257,6 +267,7 @@ def run_futures_metrics(
         "rows_affected": write_result.rows_affected if write_result else 0,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "partition_date": window_start.date().isoformat(),
+        **quality_metrics,
     }
 
 
@@ -280,8 +291,12 @@ def run_long_short_ratio(
     )
 
     write_result = None
+    quality_metrics: dict[str, MetricValue] = {}
     if rows:
-        write_result = store.upsert(settings.table_name, LongShortRatioRow.to_frame(rows))
+        frame = LongShortRatioRow.to_frame(rows)
+        report = check_frame(frame, LongShortRatioRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        write_result = store.upsert(settings.table_name, frame)
 
     logger.info(
         f"[long_short_ratio] {settings.symbol}: "
@@ -294,4 +309,5 @@ def run_long_short_ratio(
         "rows_affected": write_result.rows_affected if write_result else 0,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "partition_date": window_start.date().isoformat(),
+        **quality_metrics,
     }

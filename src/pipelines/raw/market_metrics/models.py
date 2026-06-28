@@ -2,10 +2,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 
+import polars as pl
 from pydantic import ValidationError
 
 from core.iceberg import IcebergRecord
 from core.models import Record
+from core.quality import Check, expression, from_spec
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,13 @@ class MarketMetricRow(
     date: date
     btc_dominance_pct: float
     source_updated_at: datetime
+
+    @classmethod
+    def quality_checks(cls) -> list[Check]:
+        return from_spec(cls, extra=[
+            expression("dominance_in_(0,100]",
+                       (pl.col("btc_dominance_pct") > 0) & (pl.col("btc_dominance_pct") <= 100)),
+        ])
 
     @classmethod
     def from_raw(cls, raw: RawMarketMetric) -> "MarketMetricRow":

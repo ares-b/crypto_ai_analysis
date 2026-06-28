@@ -5,6 +5,7 @@ from time import perf_counter
 from core.http import HttpClient, HttpError
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import ExchangeFlowSettings
 from .models import ExchangeFlowRow
@@ -61,8 +62,12 @@ def run_exchange_flows(
         logger.warning(f"[exchange_flows] CryptoQuant error: {exc}")
         return {"rows": 0, "rows_affected": 0, "duration_seconds": round(perf_counter() - started_at, 3)}
     rows_affected = 0
+    quality_metrics: dict[str, MetricValue] = {}
     if rows:
-        rows_affected = store.upsert(settings.table_name, ExchangeFlowRow.to_frame(rows)).rows_affected
+        frame = ExchangeFlowRow.to_frame(rows)
+        report = check_frame(frame, ExchangeFlowRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        rows_affected = store.upsert(settings.table_name, frame).rows_affected
     logger.info(
         f"[exchange_flows] {since.isoformat()}–{until.isoformat()} "
         f"rows={len(rows)} affected={rows_affected}"
@@ -71,4 +76,5 @@ def run_exchange_flows(
         "rows": len(rows),
         "rows_affected": rows_affected,
         "duration_seconds": round(perf_counter() - started_at, 3),
+        **quality_metrics,
     }

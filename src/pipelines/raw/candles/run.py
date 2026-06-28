@@ -10,6 +10,7 @@ from binance.exceptions import BinanceAPIException
 from core.helpers import isoformat_ms, utc_now_ms
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import BinanceCandleSettings
 from .models import BinanceCandleRow, RawBinanceCandle
@@ -102,8 +103,12 @@ def run_binance_candles(
 
     write_result = None
     latest_close_ms: int | None = None
+    quality_metrics: dict[str, MetricValue] = {}
     if result.candles:
-        write_result = store.upsert(settings.table_name, BinanceCandleRow.to_frame(result.candles))
+        frame = BinanceCandleRow.to_frame(result.candles)
+        report = check_frame(frame, BinanceCandleRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        write_result = store.upsert(settings.table_name, frame)
         latest_close_ms = max(c.close_time_ms for c in result.candles)
 
     logger.info(
@@ -123,4 +128,5 @@ def run_binance_candles(
         "latest_source_close_time": (
             isoformat_ms(latest_close_ms) if latest_close_ms is not None else None
         ),
+        **quality_metrics,
     }

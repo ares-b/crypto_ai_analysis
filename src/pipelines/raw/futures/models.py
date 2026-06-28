@@ -1,10 +1,12 @@
 from datetime import UTC, date, datetime
 from typing import Any, Mapping
 
+import polars as pl
 from pydantic import ValidationError
 
 from core.iceberg import IcebergRecord
 from core.models import Record
+from core.quality import Check, expression, from_spec
 
 from .config import FundingRateSettings, FuturesMetricSettings, LongShortSettings
 
@@ -98,6 +100,12 @@ class FundingRateRow(
     funding_time: datetime
     funding_rate: float
     mark_price: float | None
+
+    @classmethod
+    def quality_checks(cls) -> list[Check]:
+        return from_spec(cls, extra=[
+            expression("funding_rate_sane", pl.col("funding_rate").abs() <= 1.0),
+        ])
 
     @property
     def funding_time_ms(self) -> int:

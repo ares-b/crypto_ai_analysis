@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 from core.http import HttpClient, HttpError
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import SentimentSettings
 from .models import DeribitDvolRow, DeribitPutCallRow, SentimentRow, build_dvol_rows, build_rows
@@ -17,6 +18,10 @@ def _fetch_fear_greed(client: HttpClient, *, limit: int) -> list[dict]:
     return payload.get("data", [])
 
 
+_DVOL_DAY_MS = 86_400_000
+_DVOL_MAX_PAGES = 50  # 50 * 1000 daily candles >> full history
+
+
 def _dvol_by_date(
     client: HttpClient | None,
     *,
@@ -24,24 +29,35 @@ def _dvol_by_date(
 ) -> dict[date, float]:
     if client is None:
         return {}
-    now_ms = int(datetime.now(UTC).timestamp() * 1000)
-    try:
-        payload = client.get_json(
-            "/api/v2/public/get_volatility_index_data",
-            params={
-                "currency": "BTC",
-                "start_timestamp": start_ms,
-                "end_timestamp": now_ms,
-                "resolution": _DERIBIT_RESOLUTION,
-            },
-        )
-    except HttpError:
-        return {}
-    candles: list[list] = payload.get("result", {}).get("data", [])
-    return {
-        datetime.fromtimestamp(candle[0] / 1000, tz=UTC).date(): float(candle[4])
-        for candle in candles
-    }
+    out: dict[date, float] = {}
+    # Deribit returns at most 1000 candles, the most recent within [start, end].
+    # Page backward by moving end_timestamp earlier until we reach start_ms.
+    cursor_end = int(datetime.now(UTC).timestamp() * 1000)
+    for _ in range(_DVOL_MAX_PAGES):
+        if cursor_end <= start_ms:
+            break
+        try:
+            payload = client.get_json(
+                "/api/v2/public/get_volatility_index_data",
+                params={
+                    "currency": "BTC",
+                    "start_timestamp": start_ms,
+                    "end_timestamp": cursor_end,
+                    "resolution": _DERIBIT_RESOLUTION,
+                },
+            )
+        except HttpError:
+            break
+        candles: list[list] = payload.get("result", {}).get("data", [])
+        if not candles:
+            break
+        for candle in candles:
+            out[datetime.fromtimestamp(candle[0] / 1000, tz=UTC).date()] = float(candle[4])
+        earliest = min(candle[0] for candle in candles)
+        if len(candles) < 1000 or earliest <= start_ms:
+            break
+        cursor_end = earliest - _DVOL_DAY_MS
+    return out
 
 
 def _fetch_put_call_row(
@@ -107,19 +123,25 @@ def run_sentiment_index(
     day_rows = [row for row in rows if row.date == run_date]
     day_dvol_rows = [row for row in dvol_rows if row.date == run_date]
 
+    quality_metrics: dict[str, MetricValue] = {}
     rows_affected = 0
     if day_rows:
-        rows_affected = store.upsert(settings.table_name, SentimentRow.to_frame(day_rows)).rows_affected
+        frame = SentimentRow.to_frame(day_rows)
+        report = check_frame(frame, SentimentRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics |= report.to_metrics()
+        rows_affected = store.upsert(settings.table_name, frame).rows_affected
     dvol_rows_affected = 0
     if day_dvol_rows:
-        dvol_rows_affected = store.upsert(
-            settings.dvol_table, DeribitDvolRow.to_frame(day_dvol_rows)
-        ).rows_affected
+        dvol_frame = DeribitDvolRow.to_frame(day_dvol_rows)
+        dvol_report = check_frame(dvol_frame, DeribitDvolRow.quality_checks(), logger=logger, table=settings.dvol_table)
+        quality_metrics |= dvol_report.to_metrics(prefix="quality_dvol")
+        dvol_rows_affected = store.upsert(settings.dvol_table, dvol_frame).rows_affected
     put_call_rows_affected = 0
     if put_call_row is not None:
-        put_call_rows_affected = store.upsert(
-            settings.put_call_table, DeribitPutCallRow.to_frame([put_call_row])
-        ).rows_affected
+        pc_frame = DeribitPutCallRow.to_frame([put_call_row])
+        pc_report = check_frame(pc_frame, DeribitPutCallRow.quality_checks(), logger=logger, table=settings.put_call_table)
+        quality_metrics |= pc_report.to_metrics(prefix="quality_put_call")
+        put_call_rows_affected = store.upsert(settings.put_call_table, pc_frame).rows_affected
 
     if rows_affected == 0:
         logger.warning(f"[sentiment_index] no reading for {run_date.isoformat()}")
@@ -130,4 +152,5 @@ def run_sentiment_index(
         "dvol_rows_affected": dvol_rows_affected,
         "put_call_rows_affected": put_call_rows_affected,
         "available_days": len(rows),
+        **quality_metrics,
     }

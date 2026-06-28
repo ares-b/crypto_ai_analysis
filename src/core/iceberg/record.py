@@ -2,6 +2,7 @@ from typing import ClassVar
 
 from core.iceberg.table import TableSpec
 from core.models import Record
+from core.quality import Check, from_spec
 
 
 class IcebergRecord(Record):
@@ -39,3 +40,8 @@ class IcebergRecord(Record):
                 partition=cls._iceberg_partition,
                 sort=cls._iceberg_sort,
             )
+
+    @classmethod
+    def quality_checks(cls) -> list[Check]:
+        """Pre-write checks for this table. Override to add model-specific rules."""
+        return from_spec(cls)

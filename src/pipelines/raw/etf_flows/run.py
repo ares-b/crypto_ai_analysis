@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from core.http import HttpClient, HttpError
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import EtfFlowsSettings
 from .models import EtfFlow, EtfFlowRow, build_rows
@@ -46,18 +47,20 @@ def _parse_farside(html: str) -> list[EtfFlow]:
     parser = _TableParser()
     parser.feed(html)
     table_rows = parser.rows
-    if not table_rows:
-        return []
 
-    headers = [h.lower().strip() for h in table_rows[0]]
-    try:
-        date_idx = headers.index("date")
-        total_idx = headers.index("total")
-    except ValueError:
+    # The page has several tables (nav, etc.); find the data header row that has
+    # both Date and Total, then parse the rows after it.
+    date_idx = total_idx = header_idx = None
+    for i, row in enumerate(table_rows):
+        cells = [c.lower().strip() for c in row]
+        if "date" in cells and "total" in cells:
+            date_idx, total_idx, header_idx = cells.index("date"), cells.index("total"), i
+            break
+    if header_idx is None:
         return []
 
     flows: list[EtfFlow] = []
-    for row in table_rows[1:]:
+    for row in table_rows[header_idx + 1:]:
         if len(row) <= max(date_idx, total_idx):
             continue
         try:
@@ -99,8 +102,12 @@ def run_etf_flows(
     window_rows = [row for row in rows if window_start <= row.date <= run_date]
     day_rows = [row for row in window_rows if row.date == run_date]
     rows_affected = 0
+    quality_metrics: dict[str, MetricValue] = {}
     if window_rows:
-        rows_affected = store.upsert(settings.table_name, EtfFlowRow.to_frame(window_rows)).rows_affected
+        frame = EtfFlowRow.to_frame(window_rows)
+        report = check_frame(frame, EtfFlowRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        rows_affected = store.upsert(settings.table_name, frame).rows_affected
     if not day_rows:
         logger.warning(f"[etf_flows] no flow published for {run_date.isoformat()}")
     else:
@@ -110,4 +117,5 @@ def run_etf_flows(
         "available_days": len(rows),
         "written_days": len(window_rows),
         "fetch_status": "ok",
+        **quality_metrics,
     }

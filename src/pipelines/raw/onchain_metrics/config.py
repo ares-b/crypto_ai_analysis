@@ -1,13 +1,13 @@
 from pydantic import BaseModel, ConfigDict
 
+# Community-tier metrics only. SOPR (403) and PriceRealizedUSD (400) require a
+# CoinMetrics PRO key; sopr/realized_price_usd columns stay null until then.
 COINMETRICS_ONCHAIN_METRICS: tuple[str, ...] = (
     "CapMrktCurUSD",
     "CapMVRVCur",
     "SplyCur",
     "AdrActCnt",
     "HashRate",
-    "SOPR",
-    "PriceRealizedUSD",
 )
 
 

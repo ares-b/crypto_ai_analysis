@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from core.http import HttpClient, HttpError
 from core.storage import Store
 from pipelines import MetricValue
+from pipelines.quality import check_frame
 
 from .config import MarketNewsSettings
 from .models import MarketNewsItemRow, RawNewsItem, content_hash
@@ -144,7 +145,11 @@ def run_market_news(
         known_hashes=known_hashes,
     )
     rows_affected = 0
+    quality_metrics: dict[str, MetricValue] = {}
     if rows:
-        rows_affected = store.upsert(settings.table_name, MarketNewsItemRow.to_frame(rows)).rows_affected
+        frame = MarketNewsItemRow.to_frame(rows)
+        report = check_frame(frame, MarketNewsItemRow.quality_checks(), logger=logger, table=settings.table_name)
+        quality_metrics = report.to_metrics()
+        rows_affected = store.upsert(settings.table_name, frame).rows_affected
     logger.info(f"[market_news] {run_date.isoformat()} seen={items_seen} written={len(rows)}")
-    return {"rows_affected": rows_affected, "items_seen": items_seen, "items_written": len(rows)}
+    return {"rows_affected": rows_affected, "items_seen": items_seen, "items_written": len(rows), **quality_metrics}

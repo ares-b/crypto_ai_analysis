@@ -3,6 +3,7 @@ from typing import Any
 
 from core.iceberg import IcebergRecord
 from core.models import Record
+from core.quality import Check, from_spec, in_range
 
 
 class SentimentRow(
@@ -15,6 +16,12 @@ class SentimentRow(
     fear_greed_value: int | None
     fear_greed_label: str | None
     source_updated_at: datetime
+
+    @classmethod
+    def quality_checks(cls) -> list[Check]:
+        return from_spec(cls, extra=[
+            in_range("fear_greed_value", 0, 100, allow_null=True),
+        ])
 
 
 def build_rows(
