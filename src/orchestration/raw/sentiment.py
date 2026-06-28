@@ -2,7 +2,9 @@ from datetime import date
 
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-daily_partitions = DailyPartitionsDefinition(start_date="2026-06-14", timezone="UTC")
+from orchestration.partitions import DEPLOY_DATE
+
+daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.sentiment_index.config import SENTIMENT_SETTINGS
 from pipelines.raw.sentiment_index.run import run_sentiment_index
 from orchestration.resources import HttpClientResource, IcebergStoreResource

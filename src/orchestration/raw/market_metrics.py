@@ -2,8 +2,10 @@ from datetime import date
 
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-_dominance_partitions = DailyPartitionsDefinition(start_date="2025-06-21", timezone="UTC")
-_stablecoin_partitions = DailyPartitionsDefinition(start_date="2026-06-20", timezone="UTC")
+from orchestration.partitions import DEPLOY_DATE
+
+_dominance_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
+_stablecoin_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
 from pipelines.raw.market_metrics.run import run_market_metrics, run_stablecoin_supply
 from orchestration.resources import HttpClientResource, IcebergStoreResource

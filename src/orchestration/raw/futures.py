@@ -4,13 +4,11 @@ from dagster import AssetExecutionContext, DailyPartitionsDefinition, Materializ
 
 from pipelines.raw.futures.config import DERIVATIVES_METRICS, FUNDING_RATES, LONG_SHORT_RATIO
 from pipelines.raw.futures.run import run_funding_rates, run_futures_metrics, run_long_short_ratio
+from orchestration.partitions import DEPLOY_DATE
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
-# Funding rates have full history back to perp launch.
-_funding_partitions = DailyPartitionsDefinition(start_date="2019-09-13", timezone="UTC")
-# Binance futures/data/* stats (open interest, long/short) retain only ~30 days;
-# start recent so historical partitions don't silently backfill empty.
-_binance_stats_partitions = DailyPartitionsDefinition(start_date="2026-05-22", timezone="UTC")
+_funding_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
+_binance_stats_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 
 
 def _window(context: AssetExecutionContext) -> tuple[datetime, datetime]:

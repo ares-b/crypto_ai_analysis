@@ -18,15 +18,14 @@ from pipelines.raw.candles.config import (
     BinanceCandleSettings,
 )
 from pipelines.raw.candles.run import run_binance_candles
+from orchestration.partitions import DEPLOY_DATE, DEPLOY_WEEK_START
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
-_BINANCE_LAUNCH_DATE = "2017-08-17"
-
-daily_partitions = DailyPartitionsDefinition(start_date=_BINANCE_LAUNCH_DATE, timezone="UTC")
-four_hour_partitions = DailyPartitionsDefinition(start_date=_BINANCE_LAUNCH_DATE, timezone="UTC")
-hourly_partitions = DailyPartitionsDefinition(start_date=_BINANCE_LAUNCH_DATE, timezone="UTC")
+daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
+four_hour_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
+hourly_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 weekly_partitions = WeeklyPartitionsDefinition(
-    start_date=_BINANCE_LAUNCH_DATE, timezone="UTC", day_offset=0
+    start_date=DEPLOY_WEEK_START, timezone="UTC", day_offset=0
 )
 
 

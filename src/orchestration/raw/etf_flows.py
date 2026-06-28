@@ -2,7 +2,9 @@ from datetime import date
 
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-daily_partitions = DailyPartitionsDefinition(start_date="2024-01-11", timezone="UTC")
+from orchestration.partitions import DEPLOY_DATE
+
+daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.etf_flows.config import ETF_FLOWS_SETTINGS
 from pipelines.raw.etf_flows.run import run_etf_flows
 from orchestration.resources import HttpClientResource, IcebergStoreResource

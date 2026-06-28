@@ -2,7 +2,9 @@ from datetime import date, timedelta
 
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-daily_partitions = DailyPartitionsDefinition(start_date="2017-01-01", timezone="UTC")
+from orchestration.partitions import DEPLOY_DATE
+
+daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.macro_calendar.config import MACRO_CALENDAR_SETTINGS
 from pipelines.raw.macro_calendar.run import run_macro_calendar
 from pipelines.raw.macro_series.config import MACRO_SERIES_SETTINGS

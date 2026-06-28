@@ -2,7 +2,9 @@ from datetime import date
 
 from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
 
-daily_partitions = DailyPartitionsDefinition(start_date="2026-06-20", timezone="UTC")
+from orchestration.partitions import DEPLOY_DATE
+
+daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 from pipelines.raw.market_news.config import MARKET_NEWS_SETTINGS
 from pipelines.raw.market_news.run import run_market_news
 from orchestration.resources import HttpClientResource, IcebergStoreResource
