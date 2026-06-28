@@ -6,7 +6,10 @@ from types import ModuleType
 import orchestration.raw as _raw
 from dagster import Definitions
 
+from core.logging import install_secret_masking
 from orchestration.resources import ALL_RESOURCES
+
+install_secret_masking()
 
 _Definitions = namedtuple("_Definitions", ["assets", "jobs", "schedules"])
 
