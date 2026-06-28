@@ -25,9 +25,10 @@ class BinanceClientResource(ConfigurableResource):
 class HttpClientResource(ConfigurableResource):
     base_url: str = ""
     timeout: float = 30.0
+    headers: dict[str, str] = {}
 
     def create(self) -> HttpClient:
-        return HttpClient(self.base_url, timeout=self.timeout)
+        return HttpClient(self.base_url, timeout=self.timeout, headers=self.headers or None)
 
 
 class CryptoQuantClientResource(ConfigurableResource):
@@ -48,7 +49,9 @@ ALL_RESOURCES: dict = {
     "binance_client": BinanceClientResource(),
     "cryptoquant_client": CryptoQuantClientResource(),
     "cftc_client": HttpClientResource(base_url=COT_POSITIONING_SETTINGS.cftc_base_url),
-    "farside_client": HttpClientResource(base_url=ETF_FLOWS_SETTINGS.farside_url),
+    "farside_client": HttpClientResource(
+        base_url=ETF_FLOWS_SETTINGS.farside_url, headers=ETF_FLOWS_SETTINGS.request_headers
+    ),
     "fred_client": HttpClientResource(base_url=MACRO_CALENDAR_SETTINGS.fred_base_url),
     "coingecko_client": HttpClientResource(base_url=MARKET_METRIC_SETTINGS.coingecko_base_url),
     "market_news_client": HttpClientResource(),
