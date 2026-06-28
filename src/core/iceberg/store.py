@@ -34,14 +34,12 @@ class IcebergCatalogSettings(BaseModel):
     def _validate_required(self) -> Self:
         if not self.uri:
             raise ValueError(
-                "ICEBERG_CATALOG_URI is required. "
-                "Set it to the REST catalog endpoint "
-                "(e.g. http://lakekeeper.lakekeeper.svc.cluster.local:8181/catalog)."
+                "ICEBERG_CATALOG_URI is required. Set it to the REST catalog endpoint"
             )
         if not self.warehouse:
             raise ValueError(
                 "ICEBERG_CATALOG_WAREHOUSE is required. "
-                "Set it to the warehouse name registered in the catalog (e.g. 'crypto-ai-analysis')."
+                "Set it to the warehouse name registered in the catalog (e.g. 'crypto-ai-analysis')"
             )
         return self
 
@@ -63,7 +61,6 @@ class IcebergStore(Store):
 
     @classmethod
     def from_env(cls, specs: Sequence[TableSpec]) -> Self:
-        # Token read fresh per call: Dagster creates a new store per asset run, token TTL ~1h.
         settings = IcebergCatalogSettings()
         store = cls.from_config(
             specs,
@@ -80,7 +77,6 @@ class IcebergStore(Store):
 
     @staticmethod
     def _read_token(settings: IcebergCatalogSettings) -> str:
-        # ICEBERG_CATALOG_TOKEN takes precedence for local dev/CI without k8s SA token file.
         static = os.environ.get("ICEBERG_CATALOG_TOKEN")
         if static:
             return static
@@ -88,9 +84,8 @@ class IcebergStore(Store):
             return Path(settings.token_file).read_text().strip()
         except FileNotFoundError as exc:
             raise RuntimeError(
-                f"SA token file not found at {settings.token_file!r}. "
-                "In production, ensure the pod mounts the projected SA token at that path. "
-                "For local dev or CI, set ICEBERG_CATALOG_TOKEN to a static bearer token."
+                f"Catalog token file not found at {settings.token_file!r}. "
+                "Set ICEBERG_CATALOG_TOKEN to a bearer token, or mount a token file at that path"
             ) from exc
 
     def create_all(self) -> None:
@@ -157,7 +152,6 @@ class IcebergStore(Store):
         arrow = cast_frame_to_arrow(frame, iceberg_table.schema().as_arrow())
 
         started_at = perf_counter()
-        # Plain append: no full-table read for MERGE. Far cheaper for bulk backfills.
         iceberg_table.append(arrow)
         self._sync_metadata(spec.identifier)
 
@@ -233,7 +227,6 @@ class IcebergStore(Store):
         update.commit()
 
     def _sync_metadata(self, identifier: tuple[str, str]) -> None:
-        # S3 object stores have no atomic rename; copy to stable path so external tools skip metadata listing.
         iceberg_table = self._catalog.load_table(identifier)
         current = iceberg_table.metadata_location
         stable = self._stable_metadata_path(current)
