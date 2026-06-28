@@ -148,6 +148,25 @@ class IcebergStore(Store):
             write_duration_seconds=perf_counter() - started_at,
         )
 
+    def append(self, table: str, frame: pl.DataFrame) -> WriteResult:
+        if frame.is_empty():
+            return WriteResult(rows_inserted=0, rows_updated=0, write_duration_seconds=0.0)
+
+        spec = self._resolve(table)
+        iceberg_table = self._catalog.load_table(spec.identifier)
+        arrow = cast_frame_to_arrow(frame, iceberg_table.schema().as_arrow())
+
+        started_at = perf_counter()
+        # Plain append: no full-table read for MERGE. Far cheaper for bulk backfills.
+        iceberg_table.append(arrow)
+        self._sync_metadata(spec.identifier)
+
+        return WriteResult(
+            rows_inserted=frame.height,
+            rows_updated=0,
+            write_duration_seconds=perf_counter() - started_at,
+        )
+
     def _resolve(self, table: str) -> TableSpec:
         spec = self._specs.get(table)
         if spec is None:

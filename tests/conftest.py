@@ -29,6 +29,13 @@ class MemoryStore:
         self._tables[table] = frame
         return WriteResult(rows_inserted=len(frame), rows_updated=0, write_duration_seconds=0.0)
 
+    def append(self, table: str, frame: pl.DataFrame) -> WriteResult:
+        existing = self._tables.get(table)
+        self._tables[table] = (
+            frame if existing is None or existing.is_empty() else pl.concat([existing, frame])
+        )
+        return WriteResult(rows_inserted=len(frame), rows_updated=0, write_duration_seconds=0.0)
+
 
 
 @pytest.fixture
