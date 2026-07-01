@@ -1,9 +1,8 @@
 import logging
 
 import polars as pl
-import pytest
 
-from core.quality import QualityError, in_range, not_null, unique
+from core.quality import in_range, not_null, unique
 from core.quality.result import Severity
 from pipelines.quality import check_frame
 
@@ -15,11 +14,13 @@ class TestCheckFrame:
         frame = pl.DataFrame({"id": [1, 2], "v": [10, 20]})
         report = check_frame(frame, [not_null("id"), unique("id")], logger=_LOGGER, table="raw.x")
         assert report.ok
+        assert report.subject == "raw.x"
 
-    def test_raises_on_error_failure(self):
+    def test_error_failure_does_not_raise_but_marks_not_ok(self):
         frame = pl.DataFrame({"id": [1, 1]})
-        with pytest.raises(QualityError, match="unique"):
-            check_frame(frame, [unique("id")], logger=_LOGGER, table="raw.x")
+        report = check_frame(frame, [unique("id")], logger=_LOGGER, table="raw.x")
+        assert not report.ok
+        assert report.error_failures
 
     def test_warn_failure_does_not_raise(self):
         frame = pl.DataFrame({"v": [999]})

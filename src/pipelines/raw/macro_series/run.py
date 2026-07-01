@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, date, datetime
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -37,6 +38,10 @@ def fetch_macro_series(
     return rows
 
 
+def macro_series_quality_subjects(*, settings: MacroSeriesSettings) -> list[QualitySubject]:
+    return [(settings.table_name, MacroSeriesRow.quality_checks())]
+
+
 def run_macro_series(
     *,
     store: Store,
@@ -45,18 +50,21 @@ def run_macro_series(
     client: HttpClient,
     settings: MacroSeriesSettings,
     since: date | None,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     try:
         rows = fetch_macro_series(client, settings=settings, since=since)
     except HttpError as exc:
         logger.warning(f"[macro_series] FRED API error for {run_date.isoformat()}: {exc}")
-        return {"rows_affected": 0}
+        return RunResult({"rows_affected": 0})
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if rows:
         frame = MacroSeriesRow.to_frame(rows)
         report = check_frame(frame, MacroSeriesRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
     logger.info(f"[macro_series] {run_date.isoformat()} series={len(settings.series_ids)} rows={rows_affected}")
-    return {"rows_affected": rows_affected, **quality_metrics}
+    return RunResult({"rows_affected": rows_affected, **quality_metrics}, tuple(reports))

@@ -7,6 +7,7 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 
 from core.helpers import utc_now_ms
+from core.quality import QualitySubject, Report, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -181,6 +182,10 @@ def fetch_long_short_ratio(
     return [LongShortRatioRow.from_api_response(item, settings=settings) for item in (payload or [])]
 
 
+def funding_quality_subjects(*, settings: FundingRateSettings) -> list[QualitySubject]:
+    return [(settings.table_name, FundingRateRow.quality_checks())]
+
+
 def run_funding_rates(
     *,
     logger: logging.Logger,
@@ -189,7 +194,7 @@ def run_funding_rates(
     client: Client,
     window_start: datetime,
     window_end: datetime,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
 
     rows = fetch_funding_rates(
@@ -203,19 +208,22 @@ def run_funding_rates(
     write_result = None
     latest_funding_ms: int | None = None
     quality_metrics: dict[str, MetricValue] = {}
+    reports: list[Report] = []
     if rows:
         frame = FundingRateRow.to_frame(rows)
         report = check_frame(frame, FundingRateRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        write_result = store.upsert(settings.table_name, frame)
-        latest_funding_ms = max(row.funding_time_ms for row in rows)
+        if report.ok:
+            write_result = store.upsert(settings.table_name, frame)
+            latest_funding_ms = max(row.funding_time_ms for row in rows)
 
     logger.info(
         f"[funding_rates] {settings.symbol}: "
         f"events={len(rows)} affected={write_result.rows_affected if write_result else 0}"
     )
 
-    return {
+    return RunResult({
         "symbol": settings.symbol,
         "events": len(rows),
         "rows_affected": write_result.rows_affected if write_result else 0,
@@ -226,7 +234,11 @@ def run_funding_rates(
             else None
         ),
         **quality_metrics,
-    }
+    }, tuple(reports))
+
+
+def futures_metrics_quality_subjects(*, settings: FuturesMetricSettings) -> list[QualitySubject]:
+    return [(settings.table_name, FuturesMetricRow.quality_checks())]
 
 
 def run_futures_metrics(
@@ -237,7 +249,7 @@ def run_futures_metrics(
     client: Client,
     window_start: datetime,
     window_end: datetime,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
 
     row = fetch_futures_metric(
@@ -250,25 +262,32 @@ def run_futures_metrics(
 
     write_result = None
     quality_metrics: dict[str, MetricValue] = {}
+    reports: list[Report] = []
     if row is not None:
         frame = FuturesMetricRow.to_frame([row])
         report = check_frame(frame, FuturesMetricRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        write_result = store.upsert(settings.table_name, frame)
+        if report.ok:
+            write_result = store.upsert(settings.table_name, frame)
 
     logger.info(
         f"[futures_metrics] {settings.symbol}: "
         f"rows={1 if row else 0} affected={write_result.rows_affected if write_result else 0}"
     )
 
-    return {
+    return RunResult({
         "symbol": settings.symbol,
         "rows": 1 if row is not None else 0,
         "rows_affected": write_result.rows_affected if write_result else 0,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "partition_date": window_start.date().isoformat(),
         **quality_metrics,
-    }
+    }, tuple(reports))
+
+
+def long_short_quality_subjects(*, settings: LongShortSettings) -> list[QualitySubject]:
+    return [(settings.table_name, LongShortRatioRow.quality_checks())]
 
 
 def run_long_short_ratio(
@@ -279,7 +298,7 @@ def run_long_short_ratio(
     client: Client,
     window_start: datetime,
     window_end: datetime,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
 
     rows = fetch_long_short_ratio(
@@ -292,22 +311,25 @@ def run_long_short_ratio(
 
     write_result = None
     quality_metrics: dict[str, MetricValue] = {}
+    reports: list[Report] = []
     if rows:
         frame = LongShortRatioRow.to_frame(rows)
         report = check_frame(frame, LongShortRatioRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        write_result = store.upsert(settings.table_name, frame)
+        if report.ok:
+            write_result = store.upsert(settings.table_name, frame)
 
     logger.info(
         f"[long_short_ratio] {settings.symbol}: "
         f"rows={len(rows)} affected={write_result.rows_affected if write_result else 0}"
     )
 
-    return {
+    return RunResult({
         "symbol": settings.symbol,
         "rows": len(rows),
         "rows_affected": write_result.rows_affected if write_result else 0,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "partition_date": window_start.date().isoformat(),
         **quality_metrics,
-    }
+    }, tuple(reports))

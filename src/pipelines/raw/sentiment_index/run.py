@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, Report, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -88,6 +89,14 @@ def _fetch_put_call_row(
     )
 
 
+def sentiment_quality_subjects(*, settings: SentimentSettings) -> list[QualitySubject]:
+    return [
+        (settings.table_name, SentimentRow.quality_checks()),
+        (settings.dvol_table, DeribitDvolRow.quality_checks()),
+        (settings.put_call_table, DeribitPutCallRow.quality_checks()),
+    ]
+
+
 def run_sentiment_index(
     *,
     store: Store,
@@ -96,7 +105,7 @@ def run_sentiment_index(
     settings: SentimentSettings,
     fear_greed_client: HttpClient,
     deribit_client: HttpClient | None,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     source_updated_at = datetime.now(UTC)
 
     try:
@@ -124,33 +133,40 @@ def run_sentiment_index(
     day_dvol_rows = [row for row in dvol_rows if row.date == run_date]
 
     quality_metrics: dict[str, MetricValue] = {}
+    reports: list[Report] = []
     rows_affected = 0
     if day_rows:
         frame = SentimentRow.to_frame(day_rows)
         report = check_frame(frame, SentimentRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics |= report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
     dvol_rows_affected = 0
     if day_dvol_rows:
         dvol_frame = DeribitDvolRow.to_frame(day_dvol_rows)
         dvol_report = check_frame(dvol_frame, DeribitDvolRow.quality_checks(), logger=logger, table=settings.dvol_table)
+        reports.append(dvol_report)
         quality_metrics |= dvol_report.to_metrics(prefix="quality_dvol")
-        dvol_rows_affected = store.upsert(settings.dvol_table, dvol_frame).rows_affected
+        if dvol_report.ok:
+            dvol_rows_affected = store.upsert(settings.dvol_table, dvol_frame).rows_affected
     put_call_rows_affected = 0
     if put_call_row is not None:
         pc_frame = DeribitPutCallRow.to_frame([put_call_row])
         pc_report = check_frame(pc_frame, DeribitPutCallRow.quality_checks(), logger=logger, table=settings.put_call_table)
+        reports.append(pc_report)
         quality_metrics |= pc_report.to_metrics(prefix="quality_put_call")
-        put_call_rows_affected = store.upsert(settings.put_call_table, pc_frame).rows_affected
+        if pc_report.ok:
+            put_call_rows_affected = store.upsert(settings.put_call_table, pc_frame).rows_affected
 
     if rows_affected == 0:
         logger.warning(f"[sentiment_index] no reading for {run_date.isoformat()}")
     else:
         logger.info(f"[sentiment_index] {run_date.isoformat()} fear_greed={day_rows[0].fear_greed_value}")
-    return {
+    return RunResult({
         "rows_affected": rows_affected,
         "dvol_rows_affected": dvol_rows_affected,
         "put_call_rows_affected": put_call_rows_affected,
         "available_days": len(rows),
         **quality_metrics,
-    }
+    }, tuple(reports))

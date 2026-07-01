@@ -1,51 +1,65 @@
 from datetime import date
 
-from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, build_schedule_from_partitioned_job, define_asset_job
 
+from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
+from pipelines.raw.market_metrics.run import (
+    market_metrics_quality_subjects,
+    run_market_metrics,
+    run_stablecoin_supply,
+    stablecoin_supply_quality_subjects,
+)
 from orchestration.partitions import DEPLOY_DATE
+from orchestration._asset import raw_asset, to_materialize_result
+from orchestration._runtime import TIER_B, TIER_C
+from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 _dominance_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
 _stablecoin_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
-from pipelines.raw.market_metrics.config import MARKET_METRIC_SETTINGS
-from pipelines.raw.market_metrics.run import run_market_metrics, run_stablecoin_supply
-from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_B, TIER_C
-from orchestration.resources import HttpClientResource, IcebergStoreResource
 
 
-def _run(
+@raw_asset(
+    name="raw_market_metrics",
+    source="coingecko",
+    partitions_def=_dominance_partitions,
+    subjects=market_metrics_quality_subjects(settings=MARKET_METRIC_SETTINGS),
+)
+def raw_market_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     coingecko_client: HttpClientResource,
-    *,
-    fn,
 ) -> MaterializeResult:
     run_date = date.fromisoformat(context.partition_key)
-    metrics = fn(
+    result = run_market_metrics(
         logger=context.log,
         settings=MARKET_METRIC_SETTINGS,
         store=iceberg_store.create(),
         client=coingecko_client.create(),
         run_date=run_date,
     )
-    return MaterializeResult(metadata=metrics)
+    return to_materialize_result(context, result)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_dominance_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"}, retry_policy=DEFAULT_RETRY_POLICY)
-def raw_market_metrics(
-    context: AssetExecutionContext,
-    iceberg_store: IcebergStoreResource,
-    coingecko_client: HttpClientResource,
-) -> MaterializeResult:
-    return _run(context, iceberg_store, coingecko_client, fn=run_market_metrics)
-
-
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_stablecoin_partitions, group_name="raw", compute_kind="python", tags={"source": "coingecko"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="raw_stablecoin_supply",
+    source="coingecko",
+    partitions_def=_stablecoin_partitions,
+    subjects=stablecoin_supply_quality_subjects(settings=MARKET_METRIC_SETTINGS),
+)
 def raw_stablecoin_supply(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     coingecko_client: HttpClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, coingecko_client, fn=run_stablecoin_supply)
+    run_date = date.fromisoformat(context.partition_key)
+    result = run_stablecoin_supply(
+        logger=context.log,
+        settings=MARKET_METRIC_SETTINGS,
+        store=iceberg_store.create(),
+        client=coingecko_client.create(),
+        run_date=run_date,
+    )
+    return to_materialize_result(context, result)
 # 01:00 UTC - crypto data closes at midnight UTC
 raw_market_metrics_job = define_asset_job("raw_market_metrics_job", selection=[raw_market_metrics], tags=TIER_B)
 raw_market_metrics_schedule = build_schedule_from_partitioned_job(raw_market_metrics_job, hour_of_day=1)

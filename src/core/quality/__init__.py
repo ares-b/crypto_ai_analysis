@@ -1,5 +1,6 @@
 from core.quality.checks import (
     Check,
+    QualitySubject,
     accepted_values,
     expression,
     from_spec,
@@ -11,7 +12,7 @@ from core.quality.checks import (
     time_in_window,
     unique,
 )
-from core.quality.result import CheckResult, MetricValue, QualityError, Report, Severity
+from core.quality.result import CheckResult, MetricValue, QualityError, Report, RunResult, Severity
 from core.quality.runner import validate
 
 __all__ = [
@@ -19,7 +20,9 @@ __all__ = [
     "CheckResult",
     "MetricValue",
     "QualityError",
+    "QualitySubject",
     "Report",
+    "RunResult",
     "Severity",
     "accepted_values",
     "expression",

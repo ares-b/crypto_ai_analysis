@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 from time import perf_counter
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, Report, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -80,6 +81,13 @@ def _fetch_blockchain_rows(
     return rows
 
 
+def onchain_quality_subjects(*, settings: OnchainSettings) -> list[QualitySubject]:
+    return [
+        (settings.table_name, OnchainMetricRow.quality_checks()),
+        (settings.blockchain_charts_table, BlockchainChartRow.quality_checks()),
+    ]
+
+
 def run_onchain_metrics(
     *,
     logger: logging.Logger,
@@ -88,7 +96,7 @@ def run_onchain_metrics(
     coinmetrics_client: HttpClient,
     blockchain_client: HttpClient,
     run_date: date,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
     source_updated_at = datetime.now(tz=UTC)
 
@@ -103,12 +111,15 @@ def run_onchain_metrics(
     rows_affected = 0
     latest_source_date: date | None = None
     quality_metrics: dict[str, MetricValue] = {}
+    reports: list[Report] = []
     if rows:
         frame = OnchainMetricRow.to_frame(rows)
         report = check_frame(frame, OnchainMetricRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
-        latest_source_date = max(row.date for row in rows)
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
+            latest_source_date = max(row.date for row in rows)
 
     blockchain_rows = _fetch_blockchain_rows(
         blockchain_client, logger=logger, metric_date=run_date, source_updated_at=source_updated_at
@@ -117,18 +128,20 @@ def run_onchain_metrics(
         chart_frame = BlockchainChartRow.to_frame(blockchain_rows)
         chart_report = check_frame(chart_frame, BlockchainChartRow.quality_checks(), logger=logger,
                                    table=settings.blockchain_charts_table)
+        reports.append(chart_report)
         quality_metrics |= chart_report.to_metrics(prefix="quality_charts")
-        store.upsert(settings.blockchain_charts_table, chart_frame)
+        if chart_report.ok:
+            store.upsert(settings.blockchain_charts_table, chart_frame)
 
     logger.info(
         f"[onchain_metrics] {settings.instrument}/{settings.counterpart}: date={run_date.isoformat()} "
         f"rows={len(rows)} rows_affected={rows_affected}"
     )
-    return {
+    return RunResult({
         "rows": len(rows),
         "rows_affected": rows_affected,
         "blockchain_requests": len(blockchain_rows),
         "duration_seconds": round(perf_counter() - started_at, 3),
         "latest_source_date": latest_source_date.isoformat() if latest_source_date is not None else None,
         **quality_metrics,
-    }
+    }, tuple(reports))

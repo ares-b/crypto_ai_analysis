@@ -1,11 +1,19 @@
 from datetime import UTC, datetime, timedelta
 
-from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, asset, build_schedule_from_partitioned_job, define_asset_job
+from dagster import AssetExecutionContext, DailyPartitionsDefinition, MaterializeResult, build_schedule_from_partitioned_job, define_asset_job
 
 from pipelines.raw.futures.config import DERIVATIVES_METRICS, FUNDING_RATES, LONG_SHORT_RATIO
-from pipelines.raw.futures.run import run_funding_rates, run_futures_metrics, run_long_short_ratio
+from pipelines.raw.futures.run import (
+    funding_quality_subjects,
+    futures_metrics_quality_subjects,
+    long_short_quality_subjects,
+    run_funding_rates,
+    run_futures_metrics,
+    run_long_short_ratio,
+)
 from orchestration.partitions import DEPLOY_DATE
-from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_A, TIER_B
+from orchestration._asset import raw_asset, to_materialize_result
+from orchestration._runtime import TIER_A, TIER_B
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
 _funding_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
@@ -17,51 +25,73 @@ def _window(context: AssetExecutionContext) -> tuple[datetime, datetime]:
     return window_start, window_start + timedelta(days=1)
 
 
-def _run(
-    context: AssetExecutionContext,
-    iceberg_store: IcebergStoreResource,
-    binance_client: BinanceClientResource,
-    *,
-    fn,
-    settings,
-) -> MaterializeResult:
-    window_start, window_end = _window(context)
-    metrics = fn(
-        logger=context.log,
-        settings=settings,
-        store=iceberg_store.create(),
-        client=binance_client.create(),
-        window_start=window_start,
-        window_end=window_end,
-    )
-    return MaterializeResult(metadata=metrics)
-
-
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_funding_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="raw_funding_rates",
+    source="binance",
+    partitions_def=_funding_partitions,
+    subjects=funding_quality_subjects(settings=FUNDING_RATES),
+)
 def raw_funding_rates(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, fn=run_funding_rates, settings=FUNDING_RATES)
+    window_start, window_end = _window(context)
+    result = run_funding_rates(
+        logger=context.log,
+        settings=FUNDING_RATES,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_end,
+    )
+    return to_materialize_result(context, result)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_binance_stats_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="raw_futures_metrics",
+    source="binance",
+    partitions_def=_binance_stats_partitions,
+    subjects=futures_metrics_quality_subjects(settings=DERIVATIVES_METRICS),
+)
 def raw_futures_metrics(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, fn=run_futures_metrics, settings=DERIVATIVES_METRICS)
+    window_start, window_end = _window(context)
+    result = run_futures_metrics(
+        logger=context.log,
+        settings=DERIVATIVES_METRICS,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_end,
+    )
+    return to_materialize_result(context, result)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=_binance_stats_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="raw_long_short_ratio",
+    source="binance",
+    partitions_def=_binance_stats_partitions,
+    subjects=long_short_quality_subjects(settings=LONG_SHORT_RATIO),
+)
 def raw_long_short_ratio(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, fn=run_long_short_ratio, settings=LONG_SHORT_RATIO)
+    window_start, window_end = _window(context)
+    result = run_long_short_ratio(
+        logger=context.log,
+        settings=LONG_SHORT_RATIO,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_end,
+    )
+    return to_materialize_result(context, result)
 
 
 # 01:00 UTC - crypto data closes at midnight UTC

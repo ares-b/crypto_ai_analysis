@@ -98,3 +98,8 @@ def from_spec(record_cls, *, extra: Sequence[Check] = ()) -> list[Check]:
     ids = record_cls.TABLE_SPEC.identity_columns
     base: list[Check] = [not_null(*ids), unique(*ids)] if ids else []
     return [*base, *extra]
+
+
+# A dataset (table) and the checks run against it. run_* exposes these via
+# quality_subjects() so the orchestration layer can declare matching asset checks.
+QualitySubject = tuple[str, list[Check]]

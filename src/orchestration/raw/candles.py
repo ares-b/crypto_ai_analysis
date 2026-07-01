@@ -5,7 +5,6 @@ from dagster import (
     DailyPartitionsDefinition,
     MaterializeResult,
     WeeklyPartitionsDefinition,
-    asset,
     build_schedule_from_partitioned_job,
     define_asset_job,
 )
@@ -15,11 +14,11 @@ from pipelines.raw.candles.config import (
     FOUR_HOUR_CANDLES,
     HOURLY_CANDLES,
     WEEKLY_CANDLES,
-    BinanceCandleSettings,
 )
-from pipelines.raw.candles.run import run_binance_candles
+from pipelines.raw.candles.run import quality_subjects, run_binance_candles
 from orchestration.partitions import DEPLOY_DATE, DEPLOY_WEEK_START
-from orchestration._runtime import DEFAULT_RETRY_POLICY, TIER_A
+from orchestration._asset import raw_asset, to_materialize_result
+from orchestration._runtime import TIER_A
 from orchestration.resources import BinanceClientResource, IcebergStoreResource
 
 daily_partitions = DailyPartitionsDefinition(start_date=DEPLOY_DATE, timezone="UTC")
@@ -30,60 +29,96 @@ weekly_partitions = WeeklyPartitionsDefinition(
 )
 
 
-def _run(
-    context: AssetExecutionContext,
-    iceberg_store: IcebergStoreResource,
-    binance_client: BinanceClientResource,
-    *,
-    settings: BinanceCandleSettings,
-    window_delta: timedelta,
-) -> MaterializeResult:
-    window_start = datetime.fromisoformat(context.partition_key).replace(tzinfo=UTC)
-    metrics = run_binance_candles(
-        logger=context.log,
-        settings=settings,
-        store=iceberg_store.create(),
-        client=binance_client.create(),
-        window_start=window_start,
-        window_end=window_start + window_delta,
-    )
-    return MaterializeResult(metadata=metrics)
-
-
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=daily_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="binance_candles_daily",
+    source="binance",
+    partitions_def=daily_partitions,
+    subjects=quality_subjects(settings=DAILY_CANDLES),
+)
 def binance_candles_daily(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, settings=DAILY_CANDLES, window_delta=timedelta(days=1))
+    window_start = datetime.fromisoformat(context.partition_key).replace(tzinfo=UTC)
+    result = run_binance_candles(
+        logger=context.log,
+        settings=DAILY_CANDLES,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_start + timedelta(days=1),
+    )
+    return to_materialize_result(context, result)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=four_hour_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="binance_candles_4h",
+    source="binance",
+    partitions_def=four_hour_partitions,
+    subjects=quality_subjects(settings=FOUR_HOUR_CANDLES),
+)
 def binance_candles_4h(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, settings=FOUR_HOUR_CANDLES, window_delta=timedelta(days=1))
+    window_start = datetime.fromisoformat(context.partition_key).replace(tzinfo=UTC)
+    result = run_binance_candles(
+        logger=context.log,
+        settings=FOUR_HOUR_CANDLES,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_start + timedelta(days=1),
+    )
+    return to_materialize_result(context, result)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=hourly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="binance_candles_1h",
+    source="binance",
+    partitions_def=hourly_partitions,
+    subjects=quality_subjects(settings=HOURLY_CANDLES),
+)
 def binance_candles_1h(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, settings=HOURLY_CANDLES, window_delta=timedelta(days=1))
+    window_start = datetime.fromisoformat(context.partition_key).replace(tzinfo=UTC)
+    result = run_binance_candles(
+        logger=context.log,
+        settings=HOURLY_CANDLES,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_start + timedelta(days=1),
+    )
+    return to_materialize_result(context, result)
 
 
-@asset(key_prefix=["crypto-ai-analysis"], partitions_def=weekly_partitions, group_name="raw", compute_kind="python", tags={"source": "binance"}, retry_policy=DEFAULT_RETRY_POLICY)
+@raw_asset(
+    name="binance_candles_weekly",
+    source="binance",
+    partitions_def=weekly_partitions,
+    subjects=quality_subjects(settings=WEEKLY_CANDLES),
+)
 def binance_candles_weekly(
     context: AssetExecutionContext,
     iceberg_store: IcebergStoreResource,
     binance_client: BinanceClientResource,
 ) -> MaterializeResult:
-    return _run(context, iceberg_store, binance_client, settings=WEEKLY_CANDLES, window_delta=timedelta(weeks=1))
+    window_start = datetime.fromisoformat(context.partition_key).replace(tzinfo=UTC)
+    result = run_binance_candles(
+        logger=context.log,
+        settings=WEEKLY_CANDLES,
+        store=iceberg_store.create(),
+        client=binance_client.create(),
+        window_start=window_start,
+        window_end=window_start + timedelta(weeks=1),
+    )
+    return to_materialize_result(context, result)
 
 
 # 01:00 UTC - daily candle closes at midnight UTC

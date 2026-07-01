@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from html.parser import HTMLParser
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -81,6 +82,10 @@ def fetch_etf_flows(client: HttpClient) -> list[EtfFlowRow]:
     return build_rows(_parse_farside(html), source_updated_at=datetime.now(UTC))
 
 
+def etf_flows_quality_subjects(*, settings: EtfFlowsSettings) -> list[QualitySubject]:
+    return [(settings.table_name, EtfFlowRow.quality_checks())]
+
+
 def run_etf_flows(
     *,
     store: Store,
@@ -88,34 +93,37 @@ def run_etf_flows(
     run_date: date,
     client: HttpClient,
     settings: EtfFlowsSettings,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     try:
         rows = fetch_etf_flows(client)
     except HttpError as exc:
         logger.warning(f"[etf_flows] source unavailable for {run_date.isoformat()}: {exc}")
-        return {"rows_affected": 0, "available_days": 0, "written_days": 0, "fetch_status": "http_error"}
+        return RunResult({"rows_affected": 0, "available_days": 0, "written_days": 0, "fetch_status": "http_error"})
     if not rows:
         logger.warning(f"[etf_flows] source returned no parsable rows for {run_date.isoformat()}")
-        return {"rows_affected": 0, "available_days": 0, "written_days": 0, "fetch_status": "empty_source"}
+        return RunResult({"rows_affected": 0, "available_days": 0, "written_days": 0, "fetch_status": "empty_source"})
 
     window_start = run_date - timedelta(days=settings.incremental_lookback_days)
     window_rows = [row for row in rows if window_start <= row.date <= run_date]
     day_rows = [row for row in window_rows if row.date == run_date]
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if window_rows:
         frame = EtfFlowRow.to_frame(window_rows)
         report = check_frame(frame, EtfFlowRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
     if not day_rows:
         logger.warning(f"[etf_flows] no flow published for {run_date.isoformat()}")
     else:
         logger.info(f"[etf_flows] {run_date.isoformat()} net_flow_usd={day_rows[0].net_flow_usd}")
-    return {
+    return RunResult({
         "rows_affected": rows_affected,
         "available_days": len(rows),
         "written_days": len(window_rows),
         "fetch_status": "ok",
         **quality_metrics,
-    }
+    }, tuple(reports))

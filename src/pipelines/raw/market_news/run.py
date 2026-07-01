@@ -5,6 +5,7 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -129,6 +130,10 @@ def fetch_market_news(
     return rows, items_seen
 
 
+def market_news_quality_subjects(*, settings: MarketNewsSettings) -> list[QualitySubject]:
+    return [(settings.table_name, MarketNewsItemRow.quality_checks())]
+
+
 def run_market_news(
     *,
     store: Store,
@@ -136,7 +141,7 @@ def run_market_news(
     run_date: date,
     settings: MarketNewsSettings,
     client: HttpClient,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     known_hashes = _stored_content_hashes(store, settings.table_name)
     rows, items_seen = fetch_market_news(
         logger=logger,
@@ -146,10 +151,16 @@ def run_market_news(
     )
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if rows:
         frame = MarketNewsItemRow.to_frame(rows)
         report = check_frame(frame, MarketNewsItemRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
     logger.info(f"[market_news] {run_date.isoformat()} seen={items_seen} written={len(rows)}")
-    return {"rows_affected": rows_affected, "items_seen": items_seen, "items_written": len(rows), **quality_metrics}
+    return RunResult(
+        {"rows_affected": rows_affected, "items_seen": items_seen, "items_written": len(rows), **quality_metrics},
+        tuple(reports),
+    )

@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, date, datetime
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -53,6 +54,10 @@ def fetch_macro_calendar(
     return rows
 
 
+def macro_calendar_quality_subjects(*, settings: MacroCalendarSettings) -> list[QualitySubject]:
+    return [(settings.table_name, MacroCalendarRow.quality_checks())]
+
+
 def run_macro_calendar(
     *,
     store: Store,
@@ -61,18 +66,21 @@ def run_macro_calendar(
     client: HttpClient,
     settings: MacroCalendarSettings,
     since: date | None,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     try:
         rows = fetch_macro_calendar(client, settings=settings, since=since)
     except HttpError as exc:
         logger.warning(f"[macro_calendar] FRED API error for {run_date.isoformat()}: {exc}")
-        return {"rows_affected": 0}
+        return RunResult({"rows_affected": 0})
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if rows:
         frame = MacroCalendarRow.to_frame(rows)
         report = check_frame(frame, MacroCalendarRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
     logger.info(f"[macro_calendar] {run_date.isoformat()} events={rows_affected}")
-    return {"rows_affected": rows_affected, **quality_metrics}
+    return RunResult({"rows_affected": rows_affected, **quality_metrics}, tuple(reports))

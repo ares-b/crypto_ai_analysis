@@ -35,6 +35,8 @@ class CheckResult:
 @dataclass(frozen=True)
 class Report:
     results: tuple[CheckResult, ...]
+    # Dataset the checks ran against (table name). Used to namespace asset checks.
+    subject: str = ""
 
     @property
     def failures(self) -> list[CheckResult]:
@@ -60,3 +62,16 @@ class Report:
             f"{prefix}_failed_errors": len(self.error_failures),
             f"{prefix}_failed_warns": len(warns),
         }
+
+
+class RunResult(dict):
+    """Run metrics mapping that also carries the quality reports behind it.
+
+    Subclasses dict so existing callers keep `result["rows_affected"]`; the
+    orchestration layer reads `result.reports` to emit Dagster asset checks
+    without changing the metrics contract.
+    """
+
+    def __init__(self, metrics: dict[str, MetricValue], reports: tuple[Report, ...] = ()):
+        super().__init__(metrics)
+        self.reports: tuple[Report, ...] = tuple(reports)

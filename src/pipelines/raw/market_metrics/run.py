@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 from time import perf_counter
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -115,6 +116,14 @@ def fetch_stablecoin_supply(
     )
 
 
+def market_metrics_quality_subjects(*, settings: MarketMetricSettings) -> list[QualitySubject]:
+    return [(settings.table_name, MarketMetricRow.quality_checks())]
+
+
+def stablecoin_supply_quality_subjects(*, settings: MarketMetricSettings) -> list[QualitySubject]:
+    return [(settings.stablecoin_table, StablecoinSupplyRow.quality_checks())]
+
+
 def run_market_metrics(
     *,
     logger: logging.Logger,
@@ -122,29 +131,32 @@ def run_market_metrics(
     store: Store,
     client: HttpClient,
     run_date: date,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
     row, request_count = fetch_market_metric_row(logger=logger, client=client, run_date=run_date)
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if row is not None:
         frame = MarketMetricRow.to_frame([row])
         report = check_frame(frame, MarketMetricRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
 
     btc_dominance_pct = row.btc_dominance_pct if row is not None else None
     logger.info(
         f"[market_metrics] date={run_date.isoformat()} requests={request_count} "
         f"btc_dominance_pct={btc_dominance_pct} rows_affected={rows_affected}"
     )
-    return {
+    return RunResult({
         "requests": request_count,
         "rows_affected": rows_affected,
         "duration_seconds": round(perf_counter() - started_at, 3),
         "btc_dominance_pct": btc_dominance_pct,
         **quality_metrics,
-    }
+    }, tuple(reports))
 
 
 def run_stablecoin_supply(
@@ -154,19 +166,22 @@ def run_stablecoin_supply(
     store: Store,
     client: HttpClient,
     run_date: date,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
     row = fetch_stablecoin_supply(logger=logger, client=client, run_date=run_date)
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if row is not None:
         frame = StablecoinSupplyRow.to_frame([row])
         report = check_frame(frame, StablecoinSupplyRow.quality_checks(), logger=logger, table=settings.stablecoin_table)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.stablecoin_table, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.stablecoin_table, frame).rows_affected
     logger.info(f"[stablecoin_supply] date={run_date.isoformat()} rows_affected={rows_affected}")
-    return {
+    return RunResult({
         "rows_affected": rows_affected,
         "duration_seconds": round(perf_counter() - started_at, 3),
         **quality_metrics,
-    }
+    }, tuple(reports))

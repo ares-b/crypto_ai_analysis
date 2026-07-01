@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 from core.http import HttpClient, HttpError
+from core.quality import QualitySubject, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -44,6 +45,10 @@ def fetch_cot_positioning(
     return rows
 
 
+def cot_positioning_quality_subjects(*, settings: CotPositioningSettings) -> list[QualitySubject]:
+    return [(settings.table_name, CotPositioningRow.quality_checks())]
+
+
 def run_cot_positioning(
     *,
     store: Store,
@@ -51,19 +56,22 @@ def run_cot_positioning(
     run_date: date,
     client: HttpClient,
     settings: CotPositioningSettings,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     since = run_date - timedelta(days=settings.incremental_lookback_days)
     try:
         rows = fetch_cot_positioning(client, settings=settings, since=since)
     except HttpError as exc:
         logger.warning(f"[cot_positioning] CFTC API error for {run_date.isoformat()}: {exc}")
-        return {"rows_affected": 0}
+        return RunResult({"rows_affected": 0})
     rows_affected = 0
     quality_metrics: dict[str, MetricValue] = {}
+    reports = []
     if rows:
         frame = CotPositioningRow.to_frame(rows)
         report = check_frame(frame, CotPositioningRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        rows_affected = store.upsert(settings.table_name, frame).rows_affected
+        if report.ok:
+            rows_affected = store.upsert(settings.table_name, frame).rows_affected
     logger.info(f"[cot_positioning] {run_date.isoformat()} reports={rows_affected}")
-    return {"rows_affected": rows_affected, **quality_metrics}
+    return RunResult({"rows_affected": rows_affected, **quality_metrics}, tuple(reports))

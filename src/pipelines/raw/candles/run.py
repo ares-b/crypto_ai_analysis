@@ -8,6 +8,7 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 
 from core.helpers import isoformat_ms, utc_now_ms
+from core.quality import QualitySubject, Report, RunResult
 from core.storage import Store
 from pipelines import MetricValue
 from pipelines.quality import check_frame
@@ -82,6 +83,10 @@ def fetch_candles(
     return BinanceFetchResult(candles=candles, raw_kline_count=len(klines), request_count=request_count)
 
 
+def quality_subjects(*, settings: BinanceCandleSettings) -> list[QualitySubject]:
+    return [(settings.table_name, BinanceCandleRow.quality_checks())]
+
+
 def run_binance_candles(
     *,
     logger: logging.Logger,
@@ -90,7 +95,7 @@ def run_binance_candles(
     client: Client,
     window_start: datetime,
     window_end: datetime,
-) -> dict[str, MetricValue]:
+) -> RunResult:
     started_at = perf_counter()
 
     result = fetch_candles(
@@ -104,12 +109,15 @@ def run_binance_candles(
     write_result = None
     latest_close_ms: int | None = None
     quality_metrics: dict[str, MetricValue] = {}
+    reports: list[Report] = []
     if result.candles:
         frame = BinanceCandleRow.to_frame(result.candles)
         report = check_frame(frame, BinanceCandleRow.quality_checks(), logger=logger, table=settings.table_name)
+        reports.append(report)
         quality_metrics = report.to_metrics()
-        write_result = store.upsert(settings.table_name, frame)
-        latest_close_ms = max(c.close_time_ms for c in result.candles)
+        if report.ok:
+            write_result = store.upsert(settings.table_name, frame)
+            latest_close_ms = max(c.close_time_ms for c in result.candles)
 
     logger.info(
         f"[{settings.interval}] {settings.symbol}: "
@@ -117,7 +125,7 @@ def run_binance_candles(
         f"inserted={write_result.rows_affected if write_result else 0}"
     )
 
-    return {
+    return RunResult({
         "symbol": settings.symbol,
         "interval": settings.interval,
         "raw_klines": result.raw_kline_count,
@@ -129,4 +137,4 @@ def run_binance_candles(
             isoformat_ms(latest_close_ms) if latest_close_ms is not None else None
         ),
         **quality_metrics,
-    }
+    }, tuple(reports))
